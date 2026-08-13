@@ -118,3 +118,88 @@ DEFAULT_TEST_PARTICIPANT_IDS = [
     "S26", "S31", "S32", "S37", "S117", "S22", "S47", "S89", "S01", "S109",
     "S97", "S13", "S49",
 ]
+
+# ---------------------------------------------------------------------------
+# Priority 1 -- per-architecture paths (ActionPlan.md section 9)
+# ---------------------------------------------------------------------------
+# Priority 1 trains and compares THREE architectures (cnn_lstm, cnn_bilstm,
+# tcn). Each one needs its own model file, its own encoder/classifier
+# weights, its own metrics.json, and its own confusion matrix -- otherwise
+# training cnn_bilstm would silently overwrite the cnn_lstm baseline from
+# Priority 0.
+#
+# Backward compatibility (important): arch="cnn_lstm" resolves to the
+# EXACT SAME paths as before (BASELINE_MODEL_PATH, METRICS_PATH, etc.) --
+# so an already-trained Priority 0 baseline model, its metrics.json, and
+# its confusion matrix are untouched and still load correctly. Only the
+# two NEW architectures (cnn_bilstm, tcn) get fresh subdirectories under
+# models/artifacts/ and fresh experiments/<arch>_*.json files.
+# ---------------------------------------------------------------------------
+ARCHITECTURES = ["cnn_lstm", "cnn_bilstm", "tcn"]
+
+_LEGACY_ARCH_PATHS = {
+    "cnn_lstm": {
+        "model": BASELINE_MODEL_PATH,
+        "encoder_weights": ENCODER_WEIGHTS_PATH,
+        "classifier_weights": CLASSIFIER_WEIGHTS_PATH,
+        "metrics": METRICS_PATH,
+        "confusion_matrix": CONFUSION_MATRIX_PATH,
+        "training_history": EXPERIMENTS_DIR / "training_history.json",
+    }
+}
+
+
+def _check_arch(arch: str) -> None:
+    if arch not in ARCHITECTURES:
+        raise ValueError(f"Unknown architecture {arch!r}. Choose one of: {ARCHITECTURES}")
+
+
+def arch_model_dir(arch: str) -> Path:
+    _check_arch(arch)
+    return MODELS_DIR / arch
+
+
+def model_path(arch: str) -> Path:
+    """Path to the saved full (encoder+classifier) Keras model for `arch`."""
+    _check_arch(arch)
+    if arch in _LEGACY_ARCH_PATHS:
+        return _LEGACY_ARCH_PATHS[arch]["model"]
+    return arch_model_dir(arch) / f"{arch}.keras"
+
+
+def encoder_weights_path(arch: str) -> Path:
+    _check_arch(arch)
+    if arch in _LEGACY_ARCH_PATHS:
+        return _LEGACY_ARCH_PATHS[arch]["encoder_weights"]
+    return arch_model_dir(arch) / "encoder.weights.h5"
+
+
+def classifier_weights_path(arch: str) -> Path:
+    _check_arch(arch)
+    if arch in _LEGACY_ARCH_PATHS:
+        return _LEGACY_ARCH_PATHS[arch]["classifier_weights"]
+    return arch_model_dir(arch) / "classifier.weights.h5"
+
+
+def arch_metrics_path(arch: str) -> Path:
+    _check_arch(arch)
+    if arch in _LEGACY_ARCH_PATHS:
+        return _LEGACY_ARCH_PATHS[arch]["metrics"]
+    return EXPERIMENTS_DIR / f"{arch}_metrics.json"
+
+
+def arch_confusion_matrix_path(arch: str) -> Path:
+    _check_arch(arch)
+    if arch in _LEGACY_ARCH_PATHS:
+        return _LEGACY_ARCH_PATHS[arch]["confusion_matrix"]
+    return EXPERIMENTS_DIR / f"{arch}_confusion_matrix.csv"
+
+
+def arch_training_history_path(arch: str) -> Path:
+    _check_arch(arch)
+    if arch in _LEGACY_ARCH_PATHS:
+        return _LEGACY_ARCH_PATHS[arch]["training_history"]
+    return EXPERIMENTS_DIR / f"{arch}_training_history.json"
+
+
+ARCHITECTURE_COMPARISON_PATH = EXPERIMENTS_DIR / "architecture_comparison.md"

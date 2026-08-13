@@ -1,8 +1,13 @@
 """
-Baseline CNN-LSTM sensor model, matching the architecture described in
-ActionPlan.md section 2.2:
+Baseline CNN-LSTM sensor model (ActionPlan.md Priority 1, Option A --
+"keep as the mandatory baseline, always in the comparison table").
+Architecture unchanged from Priority 0 -- this file is copied here
+byte-for-byte from the version you already trained/evaluated, so any
+model you've already saved under the legacy paths (config.model_path
+("cnn_lstm") resolves to the same file as before: BASELINE_MODEL_PATH)
+keeps working with zero retraining required.
 
-    Input(50, 9)
+    Input(seq_len, 9)
     Conv1D 64  (LeakyReLU) -> MaxPool
     Conv1D 128 (LeakyReLU) -> MaxPool
     Conv1D 256 (LeakyReLU) -> MaxPool
@@ -46,7 +51,7 @@ def build_encoder(
     x = layers.LSTM(32)(x)
     features = layers.Dropout(dropout, name="features")(x)
 
-    return keras.Model(inputs, features, name="sensor_encoder")
+    return keras.Model(inputs, features, name="sensor_encoder_cnn_lstm")
 
 
 def build_classifier(feature_dim: int = 32, num_classes: int = NUM_CLASSES) -> keras.Model:

@@ -1,24 +1,40 @@
 """
-Train the baseline CNN-LSTM on the processed dataset (run
+Train a sensor recognizer on the processed dataset (run
 data/build_dataset.py first).
 
+Priority 1 change (ActionPlan.md section 9): this script now trains
+WHICHEVER architecture you name with --arch, instead of only the baseline
+CNN-LSTM. All three options from ActionPlan.md 9.1 are implemented and
+registered in models/__init__.py:
+
+    --arch cnn_lstm    Option A (baseline, default -- same as Priority 0)
+    --arch cnn_bilstm  Option B (bidirectional LSTM)
+    --arch tcn         Option C (dilated causal conv, no recurrence)
+
+Nothing about --arch cnn_lstm's *output* changes vs. Priority 0: it saves
+to the exact same paths as before (config.BASELINE_MODEL_PATH etc., via
+config.model_path("cnn_lstm")), so an existing trained baseline is neither
+touched nor required to be retrained. --arch cnn_bilstm and --arch tcn
+save to their own new subdirectories (models/artifacts/<arch>/) and their
+own experiments/<arch>_*.json files, so training one architecture never
+overwrites another -- this is what lets you compare all three side by side
+afterwards with compare_architectures.py before picking a winner
+(ActionPlan.md 9.3's selection rule).
+
 Usage:
-    python train.py [--epochs 100] [--batch-size 64]
+    python train.py --arch cnn_lstm
+    python train.py --arch cnn_bilstm
+    python train.py --arch tcn
+    python train.py --arch cnn_bilstm --epochs 60 --batch-size 64
 
-Saves:
-    models/artifacts/baseline_cnn_lstm.keras   (full end-to-end model)
-    models/artifacts/encoder.weights.h5        (for Priority 5 reuse)
-    models/artifacts/classifier.weights.h5
-    experiments/training_history.json
+Saves (per architecture):
+    models/artifacts/<arch or legacy path>/...   (full model + encoder/classifier weights)
+    experiments/<arch>_training_history.json      (or training_history.json for cnn_lstm)
 
-Priority 0 audit fix applied here: num_classes is now the architectural
-constant NUM_CLASSES (52) from config.py, not inferred from
-max(y_train.max(), y_val.max()) + 1. Inferring it from observed labels
-would silently shrink the model to fewer than 52 output units if a class
-was ever absent from train or val -- see data/build_dataset.py's
-class-coverage check, which now prevents that split from even being
-written, and the explicit range/coverage checks below as a second
-independent guard.
+Priority 0 audit fix (unchanged, still applies to every architecture):
+num_classes is the architectural constant NUM_CLASSES (52) from config.py,
+not inferred from max(y_train.max(), y_val.max()) + 1 -- see
+_validate_labels() and the train-class-coverage check below.
 """
 from __future__ import annotations
 
@@ -31,11 +47,9 @@ import tensorflow as tf
 from tensorflow import keras
 
 from config import (
+    ARCHITECTURES,
     BATCH_SIZE,
-    BASELINE_MODEL_PATH,
-    CLASSIFIER_WEIGHTS_PATH,
     EARLY_STOPPING_PATIENCE,
-    ENCODER_WEIGHTS_PATH,
     EPOCHS,
     EXPERIMENTS_DIR,
     LEARNING_RATE,
@@ -45,8 +59,13 @@ from config import (
     RANDOM_SEED,
     TEST_NPZ_PATH,
     TRAIN_NPZ_PATH,
+    arch_model_dir,
+    arch_training_history_path,
+    classifier_weights_path,
+    encoder_weights_path,
+    model_path,
 )
-from models.cnn_lstm import build_full_model
+from models import build_model
 
 
 def load_split(npz_path):
@@ -62,11 +81,12 @@ def _validate_labels(name: str, y: np.ndarray) -> None:
         )
 
 
-def main(epochs: int, batch_size: int, learning_rate: float) -> None:
+def main(arch: str, epochs: int, batch_size: int, learning_rate: float) -> None:
     tf.random.set_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    arch_model_dir(arch).mkdir(parents=True, exist_ok=True)
     EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
     X_train, y_train = load_split(TRAIN_NPZ_PATH)
@@ -87,10 +107,11 @@ def main(epochs: int, batch_size: int, learning_rate: float) -> None:
         )
 
     seq_len, n_channels = X_train.shape[1], X_train.shape[2]
+    print(f"[arch] {arch}")
     print(f"[data] train={X_train.shape} val={X_val.shape} num_classes={num_classes}")
 
-    full_model, encoder, classifier = build_full_model(
-        seq_len=seq_len, n_channels=n_channels, num_classes=num_classes
+    full_model, encoder, classifier = build_model(
+        arch, seq_len=seq_len, n_channels=n_channels, num_classes=num_classes
     )
     full_model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
@@ -98,6 +119,10 @@ def main(epochs: int, batch_size: int, learning_rate: float) -> None:
         metrics=["accuracy"],
     )
     full_model.summary()
+
+    num_params = int(full_model.count_params())
+    feature_dim = int(encoder.output_shape[-1])
+    print(f"[model] total_params={num_params:,} encoder_feature_dim={feature_dim}")
 
     callbacks = [
         keras.callbacks.EarlyStopping(
@@ -118,25 +143,40 @@ def main(epochs: int, batch_size: int, learning_rate: float) -> None:
     )
     elapsed = time.time() - start
 
-    full_model.save(BASELINE_MODEL_PATH)
-    encoder.save_weights(ENCODER_WEIGHTS_PATH)
-    classifier.save_weights(CLASSIFIER_WEIGHTS_PATH)
-    print(f"[save] full model -> {BASELINE_MODEL_PATH}")
-    print(f"[save] encoder weights -> {ENCODER_WEIGHTS_PATH} (Priority 5 reuse)")
-    print(f"[save] classifier weights -> {CLASSIFIER_WEIGHTS_PATH}")
+    out_model_path = model_path(arch)
+    out_encoder_path = encoder_weights_path(arch)
+    out_classifier_path = classifier_weights_path(arch)
+
+    full_model.save(out_model_path)
+    encoder.save_weights(out_encoder_path)
+    classifier.save_weights(out_classifier_path)
+    print(f"[save] full model -> {out_model_path}")
+    print(f"[save] encoder weights -> {out_encoder_path} (Priority 5 reuse)")
+    print(f"[save] classifier weights -> {out_classifier_path}")
 
     hist_out = {k: [float(v) for v in vals] for k, vals in history.history.items()}
     hist_out["train_seconds"] = elapsed
     hist_out["epochs_ran"] = len(history.history["loss"])
-    with open(EXPERIMENTS_DIR / "training_history.json", "w") as f:
+    hist_out["architecture"] = arch
+    hist_out["num_params"] = num_params
+    hist_out["encoder_feature_dim"] = feature_dim
+
+    hist_path = arch_training_history_path(arch)
+    with open(hist_path, "w") as f:
         json.dump(hist_out, f, indent=2)
+    print(f"[save] training history -> {hist_path}")
     print(f"[time] trained {hist_out['epochs_ran']} epochs in {elapsed:.1f}s")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--arch", type=str, default="cnn_lstm", choices=ARCHITECTURES,
+        help="Which Priority-1 sensor architecture to train (default: cnn_lstm, "
+             "i.e. identical behavior to Priority 0).",
+    )
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
     args = parser.parse_args()
-    main(args.epochs, args.batch_size, args.lr)
+    main(args.arch, args.epochs, args.batch_size, args.lr)
