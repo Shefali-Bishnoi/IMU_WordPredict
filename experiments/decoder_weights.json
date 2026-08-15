@@ -1,0 +1,147 @@
+{
+  "alpha": 0.05,
+  "beta": 0.85,
+  "gamma": 0.1,
+  "tau_word": 0.562,
+  "tau_word_achieved_precision_target": 0.8,
+  "tau_word_achieved_precision": 0.8009995456610631,
+  "tau_word_n_kept": 2201,
+  "tau_word_n_total": 6000,
+  "alpha_min_selected": 0.05,
+  "alpha_min_candidates_swept": [
+    0.05,
+    0.15,
+    0.25,
+    0.35,
+    0.45,
+    0.55,
+    0.65,
+    0.75,
+    0.85
+  ],
+  "floor_sweep_summary": [
+    {
+      "alpha_min": 0.05,
+      "alpha": 0.05,
+      "beta": 0.85,
+      "gamma": 0.1,
+      "seed_agreement": "2/3",
+      "pooled_val_accuracy": 0.7156666666666667,
+      "pooled_val_ci": [
+        0.7041171770565743,
+        0.7269401646294555
+      ]
+    },
+    {
+      "alpha_min": 0.15,
+      "alpha": 0.15,
+      "beta": 0.75,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6951666666666667,
+      "pooled_val_ci": [
+        0.6833967172302862,
+        0.7066868585922339
+      ]
+    },
+    {
+      "alpha_min": 0.25,
+      "alpha": 0.25,
+      "beta": 0.65,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6631666666666667,
+      "pooled_val_ci": [
+        0.651106511442665,
+        0.6750180152270593
+      ]
+    },
+    {
+      "alpha_min": 0.35,
+      "alpha": 0.35,
+      "beta": 0.55,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6481666666666667,
+      "pooled_val_ci": [
+        0.6359918684966942,
+        0.6601518538826571
+      ]
+    },
+    {
+      "alpha_min": 0.45,
+      "alpha": 0.45,
+      "beta": 0.45,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6395,
+      "pooled_val_ci": [
+        0.6272649407873254,
+        0.6515565391131436
+      ]
+    },
+    {
+      "alpha_min": 0.55,
+      "alpha": 0.55,
+      "beta": 0.35,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6335,
+      "pooled_val_ci": [
+        0.6212257377843747,
+        0.645603420399945
+      ]
+    },
+    {
+      "alpha_min": 0.65,
+      "alpha": 0.65,
+      "beta": 0.25,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6293333333333333,
+      "pooled_val_ci": [
+        0.6170330445254465,
+        0.641468112467103
+      ]
+    },
+    {
+      "alpha_min": 0.75,
+      "alpha": 0.75,
+      "beta": 0.15,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.626,
+      "pooled_val_ci": [
+        0.6136795913686215,
+        0.6381591646705118
+      ]
+    },
+    {
+      "alpha_min": 0.85,
+      "alpha": 0.85,
+      "beta": 0.05,
+      "gamma": 0.1,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.6231666666666666,
+      "pooled_val_ci": [
+        0.6108296436546126,
+        0.6353460715741169
+      ]
+    }
+  ],
+  "tuned_on_split": "val",
+  "val_word_accuracy": 0.7156666666666667,
+  "val_word_accuracy_95ci": [
+    0.7041171770565743,
+    0.7269401646294555
+  ],
+  "test_word_accuracy_confirmatory": 0.7685,
+  "test_word_accuracy_95ci": [
+    0.7495099990595753,
+    0.7864605087889492
+  ],
+  "n_words_per_seed": 2000,
+  "n_seeds": 3,
+  "seed_agreement": "2/3",
+  "note": "Tuned on SYNTHETIC concatenated-character words from the VAL split (ActionPlan.md 4.3), not real continuous writing -- retune once real word-level data exists. TEST accuracy above is a single confirmatory run, not part of the search. alpha_min was itself selected by sweeping alpha_min_candidates_swept and picking the floor with the best pooled VAL accuracy (see floor_sweep_summary) -- not hand-picked."
+}

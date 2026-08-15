@@ -1,12 +1,28 @@
-# WordPredict — Priority 0 + Priority 1 implementation
+# WordPredict — Priority 0–4 (dictionary slice) implementation
 
-This is a real, working codebase — not another planning doc. It implements
-**Priority 0** (clean, reproducible preprocessing + a baseline CNN-LSTM)
-and **Priority 1** (comparing three sensor architectures) from
-`ActionPlan.md` end to end, structured so that Priority 2 (probability
-preserving output — already done, see below), Priority 3 (beam decoding),
-and Priority 5 (the personalization adapter) slot in without rewriting
-anything.
+This is a real, working codebase — not another planning doc. It implements,
+end to end, from `ActionPlan.md`:
+
+- **Priority 0** — clean, reproducible preprocessing + a baseline CNN-LSTM.
+- **Priority 1** — comparing three sensor architectures (CNN-LSTM, CNN-BiLSTM, TCN).
+- **Priority 2** — full probability-vector output (no internal argmax), done from day one.
+- **Priority 3** — beam search over per-position character probabilities.
+- **Priority 4 (dictionary/wordfreq slice)** — beam candidates corrected against
+  a real English vocabulary (edit-distance + word frequency), with the
+  three score weights and the confidence threshold tuned experimentally
+  (never hand-picked) against a held-out split.
+
+Structured so **Priority 5** (the personalization adapter) slots in without
+rewriting anything already here — see "Deliberately not done yet" below for
+exactly what's left.
+
+**Project status:** Priorities 0–3 and the dictionary slice of Priority 4
+are implemented, tuned, and evaluated. See
+`experiments/architecture_comparison.md` for the sensor-model results and
+`experiments/decoder_evaluation.md` / `FuturePlan.md` §6 for the decoder
+ablation results. Not yet started: an n-gram/Transformer language model
+(Priority 4's stretch options), the personalization adapter (Priority 5),
+and automatic word-boundary detection (`FuturePlan.md` v2/v3/v4).
 
 ---
 
@@ -124,6 +140,92 @@ you've decided).
 
 ---
 
+## Priority 3 + 4 (dictionary slice) — beam decoding, dictionary correction, weight tuning
+
+ActionPlan.md §11–12 calls for a beam decoder over per-position character
+probabilities (never argmax'd away, per Priority 2), corrected against a
+real dictionary/frequency signal rather than the raw beam text — and for
+the score weights and confidence threshold to be tuned on data, not
+hand-picked. All of that is implemented and evaluated here.
+
+### What's implemented (Priority 3 + 4)
+
+- **`inference/beam_search.py`** — pure per-position beam search over the
+  52-class probability vectors Priority 2 already returns. Log-domain
+  scoring, `beam_width` configurable, `beam_width=1` reproduces greedy
+  decoding exactly (used as the sanity-check baseline in the ablation
+  below).
+- **`inference/word_decoder.py`** — `WordDecoder`, which runs beam search
+  and then corrects each beam candidate against a real vocabulary
+  (`language/wordfreq_scorer.py`'s `is_known_word` / `frequency_score`,
+  falling back to `language/edit_distance.py`'s BK-tree fuzzy match).
+  Deliberately split into `decode_raw()` (the expensive, weight-independent
+  half: beam search + BK-tree lookup) and `score_raw_candidates()` (the
+  cheap, weight-dependent half: a weighted sum + sort) — this is what lets
+  the weight-tuning grid search below run in seconds instead of hours, since
+  beam search and BK-tree lookups happen exactly once per word, never once
+  per weight combination.
+- **`language/wordfreq_scorer.py`** + **`language/edit_distance.py`** —
+  the dictionary/frequency signal, sourced from the `wordfreq` package (no
+  hand-maintained `dictionary.txt`), plus a BK-tree index over a 50k-word
+  vocabulary for fast fuzzy correction at any edit distance.
+- **`app/session.py`** + **`app/correction.py`** + the `/session/*`
+  endpoints in **`app/main.py`** — the v1 commit-button word-boundary
+  design (see `FuturePlan.md` §0–§1 for why a button, not an automatic
+  timing heuristic, was the correct first version): each character stroke
+  is displayed live via `POST /session/{id}/stroke`, and an explicit
+  `POST /session/{id}/commit` finalizes the in-progress word through the
+  decoder above.
+- **`experiments/tune_decoder_weights.py`** — grid-searches `ScoreWeights`
+  (`alpha`/`beta`/`gamma`, weighting sensor/beam score vs. edit-distance
+  similarity vs. word frequency) and a confidence threshold `tau_word`,
+  tuned on the VAL split only, with a single confirmatory run on TEST at
+  the end. Automatically sweeps a range of `alpha_min` floors and selects
+  whichever floor gives the best pooled VAL accuracy — no hand-picked
+  constraint (see `FuturePlan.md` §6.5/§6.7 for why this mattered: an
+  earlier hand-picked `alpha >= 0.5` floor was silently costing ~7.5
+  percentage points of word accuracy). `tau_word` is derived from the same
+  confidence value `app/correction.py` actually compares it against, with
+  a fallback ladder (90% → 70% precision targets) instead of a threshold
+  that can silently degenerate to "never confident" or "always confident."
+- **`experiments/evaluate_decoder.py`** — the canonical A/B/C/D ablation
+  (greedy vs. beam search, with vs. without dictionary correction) on a
+  fixed synthetic TEST word set, isolating exactly what beam search
+  contributes versus what dictionary correction contributes.
+- **`test_beam_dictionary.py`** — standalone smoke tests for beam search +
+  dictionary correction, including one test that runs the real trained TCN
+  end to end on synthetic words.
+
+### Current tuned results (n=2000 words/seed, `--workers 4`)
+
+Tuned weights (`experiments/decoder_weights.json`):
+`alpha=0.05, beta=0.85, gamma=0.10`, `tau_word=0.562` (achieves 80.1%
+precision on the confidence-gated subset of VAL words — a real, checked
+threshold, not a default).
+
+| Config | Beam search | Dictionary correction | TEST word accuracy | 95% CI |
+|---|---|---|---:|---|
+| A. Greedy, no dictionary | No | No | 28.30% | [26.37%, 30.31%] |
+| B. Beam search only | Yes | No | 28.30% | [26.37%, 30.31%] |
+| C. Dictionary correction only | No | Yes | 69.15% | [67.09%, 71.14%] |
+| D. Beam search + dictionary correction | Yes | Yes | 76.85% | [74.95%, 78.65%] |
+
+`B == A` exactly is expected, not a bug — see `FuturePlan.md` §6.2 for the
+proof (given the current position-independent beam scoring, beam search's
+#1 output is mathematically guaranteed to equal greedy's #1 output; beam
+search's real contribution is generating alternate candidates #2–#5 for
+the dictionary stage to consider). See `FuturePlan.md` §6 for the full
+error-category breakdown and what it implies about where to invest next
+(short version: the sensor recognizer, not the decoder, is now the
+bottleneck).
+
+**Reminder (carried through everywhere this is discussed):** these numbers
+come from SYNTHETIC words built by concatenating isolated-character test
+samples (`ActionPlan.md` §4.3), not real continuous air-writing — treat
+them as a pipeline validation, not a claim about real usage.
+
+---
+
 ## Running it on your real data
 
 Run these from the repo root, in order. Priority 1 commands are additive —
@@ -170,9 +272,28 @@ python compare_architectures.py
 # Optional: tune epochs/batch size/LR for any architecture, same flags as before
 python train.py --arch cnn_bilstm --epochs 60 --batch-size 64 --lr 0.001
 
-# --- Serve predictions (still serves the cnn_lstm architecture for now) ---
+# --- Priority 3 + 4: smoke-test beam search + dictionary correction ---
+python test_beam_dictionary.py
+
+# --- Priority 3 + 4: tune decoder weights (VAL only; sweeps alpha_min ---
+# --- floors automatically and picks the best; one confirmatory TEST run) ---
+python -m experiments.tune_decoder_weights --n-words 2000 --workers 4
+#   -> experiments/decoder_weights.json
+python test_beam_dictionary.py    # rerun -- now picks up the tuned weights automatically
+
+# --- Priority 3 + 4: canonical A/B/C/D decoder ablation on TEST ---
+python -m experiments.evaluate_decoder --n-words 2000 --workers 4 --n-errors 30
+#   -> experiments/decoder_evaluation.json / decoder_evaluation.txt
+
+# --- Serve predictions ---
 uvicorn app.main:app --reload
-# POST to /predict with {"sensor": [[ax,ay,az,gx,gy,gz,mx,my,mz], ...]}
+# Stateless single-character:
+#   POST /predict {"sensor": [[ax,ay,az,gx,gy,gz,mx,my,mz], ...]}
+# Full commit-button word flow (see app/session.py, FuturePlan.md §0-1):
+#   POST /session/start
+#   POST /session/{session_id}/stroke   {"sensor": [[...]]}   # per character
+#   POST /session/{session_id}/commit                          # finalize word
+#   POST /session/{session_id}/end                              # end session
 ```
 
 ## Deliberately not done yet
@@ -207,3 +328,8 @@ URL):
 - A `CONTRIBUTING.md` only if you expect others besides you to submit
   changes; skip it otherwise, no need to add process overhead for a
   single-author BTP.
+
+python test_beam_dictionary.py
+python -m experiments.tune_decoder_weights --n-words 800
+python test_beam_dictionary.py    # rerun -- now picks up tuned weights automatically
+python -m experiments.evaluate_decoder --n-words 800 --workers 4 --n-errors 30

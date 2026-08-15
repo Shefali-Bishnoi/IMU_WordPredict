@@ -5,3 +5,4 @@ tensorflow-cpu>=2.15  # swap for tensorflow (GPU build) if you have a CUDA setup
 fastapi>=0.110
 uvicorn[standard]>=0.29
 pydantic>=2.0
+wordfreq>=3.0
