@@ -8,7 +8,7 @@ import math
 
 from config import label_to_index, NUM_CLASSES
 from inference.beam_search import beam_search
-from inference.word_decoder import WordDecoder
+from inference.word_decoder import ScoreWeights, WordDecoder
 
 
 def make_probs(char: str, confidence: float, runner_up: str | None = None,
@@ -119,6 +119,80 @@ def test_top_k_variants():
     print("PASS (no crash, both widths return valid candidate sets)\n")
 
 
+def test_ngram_lm_integration():
+    header("TEST: n-gram LM wiring (delta re-ranking + search_lambda_lm steering)")
+    try:
+        from config import NGRAM_MODEL_PATH
+        from language.ngram import NgramLanguageModel
+    except Exception as e:  # noqa: BLE001
+        print(f"[skip] missing dependency: {e}\n")
+        return
+
+    if NGRAM_MODEL_PATH.exists():
+        model = NgramLanguageModel.load(NGRAM_MODEL_PATH)
+        print(f"loaded {NGRAM_MODEL_PATH} (order={model.order}, "
+              f"contexts={len(model.totals)})")
+    else:
+        print(f"[info] {NGRAM_MODEL_PATH} not found -- training a tiny throwaway model "
+              f"for THIS TEST ONLY (run `python -m experiments.build_ngram_model` once "
+              f"for the real one; that's what tune_decoder_weights.py will use).")
+        model = NgramLanguageModel.train(order=3, vocab_size=2000)
+
+    # Reuse the deliberately-misspelled sequence from
+    # test_misspelled_candidate_gets_corrected() so beam search has more
+    # than one distinct corrected candidate to work with.
+    sequence = [make_probs(c, 0.9) for c in "helo"]
+
+    # 1) Attaching ngram_model with search_lambda_lm=0.0 (the default)
+    # must reproduce the EXACT no-LM beam search -- word_decoder.py's
+    # docstring promises this so that decode_raw() callers can add an
+    # LM purely for the `delta` re-ranking term without opting into
+    # search-time steering. This is the one guarantee worth hard-
+    # asserting; everything else below is data-dependent.
+    plain = WordDecoder(beam_width=5, top_k=5).decode_raw(sequence)
+    with_lm = WordDecoder(beam_width=5, top_k=5, ngram_model=model,
+                           search_lambda_lm=0.0).decode_raw(sequence)
+    plain_raws = [c.raw for c in plain]
+    with_lm_raws = [c.raw for c in with_lm]
+    assert plain_raws == with_lm_raws, (
+        f"attaching ngram_model with search_lambda_lm=0.0 changed the beam search "
+        f"(it shouldn't): {plain_raws} vs {with_lm_raws}"
+    )
+    print("PASS: ngram_model attached + search_lambda_lm=0.0 -> identical beam search "
+          "to the no-LM case")
+
+    # 2) lm_score is populated and normalized to [0, 1] once ngram_model
+    # is attached (RawCandidate.lm_score defaults to 0.0 without one).
+    for c in with_lm:
+        assert 0.0 <= c.lm_score <= 1.0, f"lm_score out of [0,1]: {c}"
+    lm_by_word = {c.word: round(c.lm_score, 3) for c in with_lm}
+    print(f"lm_score by corrected word: {lm_by_word}")
+
+    # 3) delta is a cheap re-weighting of the SAME cached raw candidates
+    # (no re-decode) -- score_raw_candidates() must accept delta>0 and
+    # return a well-formed result.
+    scored_delta0 = WordDecoder.score_raw_candidates(
+        with_lm, ScoreWeights(alpha=0.6, beta=0.25, gamma=0.15, delta=0.0))
+    scored_delta_hi = WordDecoder.score_raw_candidates(
+        with_lm, ScoreWeights(alpha=0.3, beta=0.2, gamma=0.1, delta=0.4))
+    print(f"delta=0.0  -> prediction={scored_delta0['prediction']!r} "
+          f"top_final_score={scored_delta0['candidates'][0]['final_score']:.3f}")
+    print(f"delta=0.4  -> prediction={scored_delta_hi['prediction']!r} "
+          f"top_final_score={scored_delta_hi['candidates'][0]['final_score']:.3f}")
+    assert scored_delta0["prediction"] and scored_delta_hi["prediction"]
+
+    # 4) search_lambda_lm > 0 actually engages the LM during search --
+    # just confirm it runs cleanly and returns a valid, non-empty beam
+    # (the exact hypotheses it favors are data/model-dependent, so this
+    # isn't asserted beyond "didn't crash, still returns candidates").
+    steered = WordDecoder(beam_width=5, top_k=5, ngram_model=model,
+                           search_lambda_lm=0.3).decode_raw(sequence)
+    assert len(steered) > 0
+    print(f"search_lambda_lm=0.3 raw candidates: {[c.raw for c in steered]}")
+
+    print("PASS: n-gram LM wiring (delta + search_lambda_lm) behaves as documented\n")
+
+
 def test_real_model_integration():
     header("TEST: real TCN -> beam search -> wordfreq correction (SYNTHETIC words)")
     print("NOTE: words below are built by concatenating ISOLATED single-character")
@@ -189,5 +263,6 @@ if __name__ == "__main__":
     test_beam_width_equivalences()
     test_top_k_variants()
     test_greedy_vs_beam_disagreement()
+    test_ngram_lm_integration()
     test_real_model_integration()
     header("ALL TESTS COMPLETE")

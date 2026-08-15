@@ -70,6 +70,9 @@ MODEL_SEQ_LEN = PAD_TARGET_LEN
 NOMINAL_SAMPLE_RATE_HZ = 50
 NOMINAL_DT_SECONDS = 1.0 / NOMINAL_SAMPLE_RATE_HZ
 
+NGRAM_MODEL_PATH = EXPERIMENTS_DIR / "ngram_model.json"
+
+
 # ---------------------------------------------------------------------------
 # Label space: 52 classes, A-Z -> 0-25, a-z -> 26-51.
 # NOTE: the original prototype notebook (GRU_model.ipynb) only ever loaded

@@ -50,10 +50,48 @@ Leakage / stability fixes (unchanged from before):
    samples and the winning combo (per floor) must be checked for
    agreement across seeds (majority vote), with Wilson 95% CI reported.
 
+N-GRAM LM SUPPORT (this revision, ActionPlan.md Priority 4): if
+experiments/ngram_model.json exists (built via
+`python -m experiments.build_ngram_model`), it is loaded ONCE and wired
+through both LM knobs word_decoder.py exposes (see its module docstring
+for why they're separate):
+  1. `search_lambda_lm` -- SEARCH-TIME steering. This changes what
+     decode_raw() actually produces, so it CANNOT be swept as a cheap
+     re-weighting like alpha/beta/gamma/delta -- each candidate value
+     requires a full re-decode. It is therefore swept as a small OUTER
+     loop (default: --search-lambda-lm-candidates, a handful of values),
+     with decode_raw() computed once per (lambda, seed, word) inside
+     that loop; the existing alpha/beta/gamma/delta grid + alpha_min
+     floor sweep then runs, unchanged, against each lambda's cached
+     decodes. Whichever lambda's best floor/weights combo gets the best
+     pooled VAL accuracy is selected.
+  2. `delta` (on ScoreWeights) -- FINAL re-ranking weight on the n-gram
+     LM's full-word score. This IS cheap (score_raw_candidates() already
+     computes it from RawCandidate.lm_score, which decode_raw() fills in
+     once per word regardless of delta), so it's simply folded into the
+     existing weight grid as a 4th free dimension
+     (alpha + beta + gamma + delta = 1) alongside alpha/beta/gamma,
+     using the same step and the same alpha_min floor semantics as
+     before.
+If no ngram_model.json is found, this script behaves EXACTLY as before
+(delta stays fixed at 0.0, no lambda sweep, single decode pass) -- the
+LM is opt-in, not required.
+
+The multiprocessing worker pool now also carries the n-gram model
+through to each worker process via the pool initializer/initargs
+(NgramLanguageModel is a plain dataclass of dicts/lists/strings, so it
+pickles the same way ScoreWeights etc. already do) -- workers build
+their own WordDecoder(ngram_model=...) once per process, exactly like
+they already do for beam_width/top_k/etc.
+
 Usage:
     python -m experiments.tune_decoder_weights --n-words 800
     python -m experiments.tune_decoder_weights --n-words 800 --workers 4
     python -m experiments.tune_decoder_weights --n-words 800 --alpha-min-candidates 0.5
+    # with an n-gram LM (auto-detected from experiments/ngram_model.json):
+    python -m experiments.tune_decoder_weights --n-words 800 --workers 4
+    python -m experiments.tune_decoder_weights --n-words 800 --search-lambda-lm-candidates 0,0.1,0.2,0.3
+    python -m experiments.tune_decoder_weights --n-words 800 --no-ngram   # force old behavior
 """
 from __future__ import annotations
 
@@ -65,13 +103,18 @@ import random
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
 from wordfreq import top_n_list
 
-from config import EXPERIMENTS_DIR, PROCESSED_DIR, TEST_NPZ_PATH, label_to_index, model_path
+from config import (
+    EXPERIMENTS_DIR, NGRAM_MODEL_PATH, PROCESSED_DIR, TEST_NPZ_PATH,
+    label_to_index, model_path,
+)
 from inference.word_decoder import DEFAULT_VOCAB_SIZE, RawCandidate, ScoreWeights, WordDecoder
+from language.ngram import NgramLanguageModel
 
 OUT_PATH = EXPERIMENTS_DIR / "decoder_weights.json"
 VAL_NPZ_PATH = PROCESSED_DIR / "val.npz"
@@ -81,6 +124,12 @@ VAL_NPZ_PATH = PROCESSED_DIR / "val.npz"
 # exactly these means every floor corresponds to a real grid boundary --
 # no floor is silently a no-op because it falls between two grid points.
 DEFAULT_ALPHA_MIN_CANDIDATES = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85]
+
+# Small outer sweep over SEARCH-TIME LM steering (only used when an
+# ngram_model is loaded). Kept short because, unlike the alpha/beta/
+# gamma/delta grid, each value here forces a full re-decode -- see the
+# module docstring.
+DEFAULT_SEARCH_LAMBDA_LM_CANDIDATES = [0.0, 0.1, 0.2, 0.3]
 
 
 # ---------------------------------------------------------------------------
@@ -117,13 +166,23 @@ def build_synthetic_words(y, n_words, seed, min_len=3, max_len=8):
 _worker_decoder: WordDecoder | None = None
 
 
-def _init_worker(beam_width: int, top_k: int, vocab_size: int, max_search_distance: int) -> None:
-    """Runs once per worker PROCESS (not per task), so the BK-tree gets
-    built at most once per worker instead of once per word."""
+def _init_worker(
+    beam_width: int, top_k: int, vocab_size: int, max_search_distance: int,
+    ngram_model: NgramLanguageModel | None, search_lambda_sensor: float,
+    search_lambda_lm: float,
+) -> None:
+    """Runs once per worker PROCESS (not per task), so the BK-tree (and,
+    if attached, the n-gram model) get built/attached at most once per
+    worker instead of once per word. `ngram_model` is passed through
+    ProcessPoolExecutor's initargs, which pickles it once per worker --
+    NgramLanguageModel is a plain dataclass of dicts/lists/strings so
+    this is no different from any other picklable initarg here."""
     global _worker_decoder
     _worker_decoder = WordDecoder(
         beam_width=beam_width, top_k=top_k,
         vocab_size=vocab_size, max_search_distance=max_search_distance,
+        ngram_model=ngram_model, search_lambda_sensor=search_lambda_sensor,
+        search_lambda_lm=search_lambda_lm,
     )
 
 
@@ -140,16 +199,26 @@ def precompute_raw_candidates(
     vocab_size: int = DEFAULT_VOCAB_SIZE,
     max_search_distance: int = 3,
     n_workers: int = 1,
+    ngram_model: NgramLanguageModel | None = None,
+    search_lambda_sensor: float = 1.0,
+    search_lambda_lm: float = 0.0,
 ) -> list[tuple[str, list[RawCandidate]]]:
     """Returns [(true_word, raw_candidates), ...] -- decode_raw() called
     exactly once per word. This is the only place beam search / the
-    BK-tree get exercised in the whole tuning run.
+    BK-tree / the n-gram model get exercised in the whole tuning run.
 
     n_workers=1 runs single-process (simplest, best for small n_words or
     debugging). n_workers>1 uses a process pool -- NOT a thread pool,
     since this is pure-Python CPU-bound work and threads would be
     serialized by the GIL anyway; only separate processes actually run
     in parallel here.
+
+    ngram_model/search_lambda_lm are passed straight through to every
+    WordDecoder this function builds (single-process or per-worker) --
+    search_lambda_lm=0.0 (the default) reproduces the exact old
+    sensor-only beam search even when ngram_model is attached, so
+    callers that only want the `delta` re-ranking term can pass
+    ngram_model without opting into search-time steering.
     """
     tasks = [
         (true_word, [all_probs[i].tolist() for i in row_indices])
@@ -160,6 +229,8 @@ def precompute_raw_candidates(
         decoder = WordDecoder(
             beam_width=beam_width, top_k=top_k,
             vocab_size=vocab_size, max_search_distance=max_search_distance,
+            ngram_model=ngram_model, search_lambda_sensor=search_lambda_sensor,
+            search_lambda_lm=search_lambda_lm,
         )
         return [(tw, decoder.decode_raw(seq)) for tw, seq in tasks]
 
@@ -167,7 +238,10 @@ def precompute_raw_candidates(
     with ProcessPoolExecutor(
         max_workers=n_workers,
         initializer=_init_worker,
-        initargs=(beam_width, top_k, vocab_size, max_search_distance),
+        initargs=(
+            beam_width, top_k, vocab_size, max_search_distance,
+            ngram_model, search_lambda_sensor, search_lambda_lm,
+        ),
     ) as ex:
         # map() preserves task order, so results line up with `words`
         # without needing to track futures individually.
@@ -269,22 +343,50 @@ def wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def run_grid_from_raw(
-    raw_results: list[tuple[str, list[RawCandidate]]], step: float = 0.1
+    raw_results: list[tuple[str, list[RawCandidate]]], step: float = 0.1,
+    include_delta: bool = False,
 ):
     """Full unconstrained grid (alpha_min=0.05 floor to avoid a
     degenerate 0-weight). Each grid point only does the cheap weighted
-    sum + sort (evaluate_from_raw) -- no re-decoding."""
+    sum + sort (evaluate_from_raw) -- no re-decoding, no re-running
+    beam search / the BK-tree / the n-gram model, regardless of
+    include_delta.
+
+    include_delta=False (default, and the only option when no
+    ngram_model is attached) reproduces the original 3-free-parameter
+    simplex exactly: alpha + beta + gamma = 1, delta fixed at 0.0.
+
+    include_delta=True adds delta as a 4th free dimension on the same
+    simplex (alpha + beta + gamma + delta = 1), stepped the same way --
+    every RawCandidate already carries lm_score (computed once in
+    decode_raw(), independent of delta), so scoring a delta>0 combo here
+    costs exactly the same as any other combo: one weighted sum + sort
+    per word, no n-gram re-scoring."""
     grid = [round(x, 2) for x in np.arange(0.05, 0.91, step)]
     results = []
+    if not include_delta:
+        for alpha in grid:
+            remainder = round(1.0 - alpha, 2)
+            for beta in [round(x, 2) for x in np.arange(0.05, remainder, step)]:
+                gamma = round(remainder - beta, 2)
+                if gamma < 0.05:
+                    continue
+                weights = ScoreWeights(alpha=alpha, beta=beta, gamma=gamma, delta=0.0)
+                acc, margins = evaluate_from_raw(raw_results, weights)
+                results.append((acc, weights, margins))
+        return results
+
     for alpha in grid:
-        remainder = round(1.0 - alpha, 2)
-        for beta in [round(x, 2) for x in np.arange(0.05, remainder, step)]:
-            gamma = round(remainder - beta, 2)
-            if gamma < 0.05:
-                continue
-            weights = ScoreWeights(alpha=alpha, beta=beta, gamma=gamma)
-            acc, margins = evaluate_from_raw(raw_results, weights)
-            results.append((acc, weights, margins))
+        remainder_a = round(1.0 - alpha, 2)
+        for beta in [round(x, 2) for x in np.arange(0.05, remainder_a, step)]:
+            remainder_ab = round(remainder_a - beta, 2)
+            for gamma in [round(x, 2) for x in np.arange(0.05, remainder_ab, step)]:
+                delta = round(remainder_ab - gamma, 2)
+                if delta < 0.05:
+                    continue
+                weights = ScoreWeights(alpha=alpha, beta=beta, gamma=gamma, delta=delta)
+                acc, margins = evaluate_from_raw(raw_results, weights)
+                results.append((acc, weights, margins))
     return results
 
 
@@ -339,10 +441,13 @@ def select_weights_across_floors(
                   f"one seed -- skipping this floor")
             continue
 
-        combo_votes = Counter((w.alpha, w.beta, w.gamma) for _, w, _ in constrained_best_per_seed)
+        combo_votes = Counter(
+            (w.alpha, w.beta, w.gamma, w.delta) for _, w, _ in constrained_best_per_seed
+        )
         winning_combo, n_votes = combo_votes.most_common(1)[0]
         best_weights = ScoreWeights(
-            alpha=winning_combo[0], beta=winning_combo[1], gamma=winning_combo[2]
+            alpha=winning_combo[0], beta=winning_combo[1], gamma=winning_combo[2],
+            delta=winning_combo[3],
         )
 
         total_correct, total_n = 0, 0
@@ -350,7 +455,7 @@ def select_weights_across_floors(
         for results in per_seed_results:
             _, _, margins = next(
                 r for r in results
-                if (r[1].alpha, r[1].beta, r[1].gamma) == winning_combo
+                if (r[1].alpha, r[1].beta, r[1].gamma, r[1].delta) == winning_combo
             )
             total_correct += sum(c for _, c in margins)
             total_n += len(margins)
@@ -369,64 +474,145 @@ def select_weights_across_floors(
     return summaries
 
 
-def main(n_words: int, alpha_min_candidates: list[float], n_seeds: int, workers: int) -> None:
+def run_floor_sweep_for_lambda(
+    per_seed_raw: list[list[tuple[str, list[RawCandidate]]]],
+    alpha_min_candidates: list[float],
+    n_seeds: int,
+    include_delta: bool,
+    label: str,
+) -> tuple[list[dict], dict] | tuple[None, None]:
+    """Cheap step for ONE search_lambda_lm value: grid-search the
+    already-decoded per_seed_raw, then sweep alpha_min floors against
+    it. Returns (summaries, best_summary), or (None, None) if no floor
+    produced a usable combo for this lambda."""
+    t0 = time.perf_counter()
+    per_seed_results = [run_grid_from_raw(r, include_delta=include_delta) for r in per_seed_raw]
+    print(f"[tune] {label}: weight grid-search over {len(per_seed_results[0])} combos x "
+          f"{n_seeds} seeds took {time.perf_counter() - t0:.2f}s")
+
+    summaries = select_weights_across_floors(per_seed_results, alpha_min_candidates, n_seeds)
+    if not summaries:
+        print(f"[warn] {label}: no alpha_min floor produced a usable combo for every seed -- "
+              f"skipping this lambda")
+        return None, None
+
+    best = max(summaries, key=lambda s: s["pooled_val_accuracy"])
+    w = best["weights"]
+    print(f"[tune] {label}: best pooled VAL acc={best['pooled_val_accuracy']:.4f} at "
+          f"alpha_min={best['alpha_min']} (alpha={w.alpha} beta={w.beta} gamma={w.gamma} "
+          f"delta={w.delta}), seed_agreement={best['seed_agreement']}")
+    return summaries, best
+
+
+def main(
+    n_words: int, alpha_min_candidates: list[float], n_seeds: int, workers: int,
+    ngram_model_path: Path | None, search_lambda_lm_candidates: list[float],
+) -> None:
     val_data = np.load(VAL_NPZ_PATH, allow_pickle=True)
     X_val, y_val = val_data["X"], val_data["y"]
     model = tf.keras.models.load_model(model_path("tcn"))
     val_probs = model.predict(X_val, batch_size=256, verbose=0)
 
+    ngram_model = None
+    if ngram_model_path is not None:
+        if ngram_model_path.exists():
+            ngram_model = NgramLanguageModel.load(ngram_model_path)
+            print(f"[tune] loaded n-gram LM from {ngram_model_path} "
+                  f"(order={ngram_model.order}, contexts={len(ngram_model.totals)})")
+        else:
+            print(f"[tune] WARNING: n-gram model not found at {ngram_model_path} -- continuing "
+                  f"WITHOUT it (delta stays 0.0, no search_lambda_lm sweep). Run "
+                  f"`python -m experiments.build_ngram_model` first to enable it, or pass "
+                  f"--no-ngram to silence this warning.")
+
+    include_delta = ngram_model is not None
+    lambda_candidates = search_lambda_lm_candidates if ngram_model is not None else [0.0]
+
     print(f"[tune] tuning on VAL split ({VAL_NPZ_PATH}) -- TEST is held out until the end")
     print(f"[tune] sweeping alpha_min floors: {alpha_min_candidates} "
           f"(picking whichever gives the best pooled VAL accuracy -- no hand-picked floor)")
     print(f"[tune] workers={workers} for the beam-search/dictionary decode step")
+    if ngram_model is not None:
+        print(f"[tune] n-gram LM attached -- sweeping search_lambda_lm (search-time steering) "
+              f"over {lambda_candidates}, grid-searching delta (final re-ranking) up to "
+              f"1-alpha-beta-gamma within each")
 
-    # --- Expensive step: decode_raw() once per (seed, word). Computed
-    # exactly once regardless of how many floors we sweep afterward. -----
-    per_seed_raw = []
-    for seed in range(n_seeds):
-        words = build_synthetic_words(y_val, n_words, seed=seed)
-        t0 = time.perf_counter()
-        raw_results = precompute_raw_candidates(words, val_probs, n_workers=workers)
-        elapsed = time.perf_counter() - t0
-        per_seed_raw.append(raw_results)
-        print(f"[tune] seed={seed}: decoded {len(raw_results)} synthetic val words "
-              f"in {elapsed:.1f}s")
+    # --- Outer loop over search_lambda_lm: this is the one knob that
+    # changes decode_raw() itself, so each value needs a full re-decode.
+    # Everything inside (the alpha/beta/gamma/delta grid + floor sweep)
+    # is the cheap, reused-per-lambda part. -------------------------------
+    lambda_runs = []
+    for lam in lambda_candidates:
+        label = f"search_lambda_lm={lam}" if ngram_model is not None else "no-LM"
+        print(f"\n[tune] === {label} ===")
 
-    # --- Cheap step: full grid-search against the cached decodes, once. -
-    t0 = time.perf_counter()
-    per_seed_results = [run_grid_from_raw(raw_results) for raw_results in per_seed_raw]
-    print(f"[tune] weight grid-search over {len(per_seed_results[0])} combos x "
-          f"{n_seeds} seeds took {time.perf_counter() - t0:.2f}s (this is the part "
-          f"that used to dominate runtime)")
+        per_seed_raw = []
+        for seed in range(n_seeds):
+            words = build_synthetic_words(y_val, n_words, seed=seed)
+            t0 = time.perf_counter()
+            raw_results = precompute_raw_candidates(
+                words, val_probs, n_workers=workers,
+                ngram_model=ngram_model, search_lambda_lm=lam,
+            )
+            elapsed = time.perf_counter() - t0
+            per_seed_raw.append(raw_results)
+            print(f"[tune] {label} seed={seed}: decoded {len(raw_results)} synthetic val "
+                  f"words in {elapsed:.1f}s")
 
-    print_alpha_tradeoff_curve(per_seed_results[0])
+        if lam == lambda_candidates[0]:
+            # Only need the diagnostic curve once -- it's per-alpha, not
+            # per-lambda, and printing it for every lambda would be noisy.
+            first_grid = run_grid_from_raw(per_seed_raw[0], include_delta=include_delta)
+            print_alpha_tradeoff_curve(first_grid)
 
-    # --- Floor sweep: reuses per_seed_results, no re-decoding. ----------
-    summaries = select_weights_across_floors(per_seed_results, alpha_min_candidates, n_seeds)
-    if not summaries:
+        summaries, best = run_floor_sweep_for_lambda(
+            per_seed_raw, alpha_min_candidates, n_seeds, include_delta, label,
+        )
+        if summaries is None:
+            continue
+        lambda_runs.append({
+            "search_lambda_lm": lam, "summaries": summaries, "best": best,
+            "per_seed_raw": per_seed_raw,
+        })
+
+    if not lambda_runs:
         raise RuntimeError(
-            "No alpha_min floor in --alpha-min-candidates produced a usable combo for "
-            "every seed -- widen the candidate list (e.g. include 0.05)."
+            "No (search_lambda_lm, alpha_min) combination produced a usable result -- widen "
+            "--alpha-min-candidates and/or --search-lambda-lm-candidates."
         )
 
-    print("[tune] alpha_min floor sweep (pooled VAL accuracy per floor, all computed "
-          "from the SAME decoded words -- no extra decoding per floor):")
-    header = f"{'alpha_min':>10}{'alpha':>8}{'beta':>8}{'gamma':>8}{'seed_agree':>12}{'val_acc':>10}"
+    # --- Pick the lambda whose best floor/weights combo has the best
+    # pooled VAL accuracy. With no LM this is trivially the single
+    # lambda=0.0 run, so behavior is unchanged from before. --------------
+    best_run = max(lambda_runs, key=lambda r: r["best"]["pooled_val_accuracy"])
+    best_lambda = best_run["search_lambda_lm"]
+    summaries = best_run["summaries"]
+    best = best_run["best"]
+    best_weights = best["weights"]
+
+    if len(lambda_runs) > 1:
+        print("\n[tune] search_lambda_lm sweep summary (best pooled VAL acc per lambda):")
+        for r in sorted(lambda_runs, key=lambda r: r["search_lambda_lm"]):
+            marker = "  <== selected" if r is best_run else ""
+            print(f"    search_lambda_lm={r['search_lambda_lm']:.2f}  "
+                  f"val_acc={r['best']['pooled_val_accuracy']:.4f}{marker}")
+
+    print(f"\n[tune] alpha_min floor sweep for the selected search_lambda_lm={best_lambda} "
+          f"(pooled VAL accuracy per floor, all computed from the SAME decoded words -- no "
+          f"extra decoding per floor):")
+    header = (f"{'alpha_min':>10}{'alpha':>8}{'beta':>8}{'gamma':>8}{'delta':>8}"
+              f"{'seed_agree':>12}{'val_acc':>10}")
     print(header)
     print("-" * len(header))
     for s in sorted(summaries, key=lambda s: s["alpha_min"]):
         w = s["weights"]
         print(f"{s['alpha_min']:>10.2f}{w.alpha:>8.2f}{w.beta:>8.2f}{w.gamma:>8.2f}"
-              f"{s['seed_agreement']:>12}{s['pooled_val_accuracy']:>10.4f}")
+              f"{w.delta:>8.2f}{s['seed_agreement']:>12}{s['pooled_val_accuracy']:>10.4f}")
 
-    # Pick the floor with the best pooled VAL accuracy -- the same
-    # evidence-based selection rule used everywhere else in this project,
-    # now applied to the floor itself instead of leaving it hand-picked.
-    best = max(summaries, key=lambda s: s["pooled_val_accuracy"])
-    best_weights = best["weights"]
     print(
-        f"\n[tune] SELECTED: alpha_min={best['alpha_min']} -> "
+        f"\n[tune] SELECTED: search_lambda_lm={best_lambda} alpha_min={best['alpha_min']} -> "
         f"alpha={best_weights.alpha} beta={best_weights.beta} gamma={best_weights.gamma} "
+        f"delta={best_weights.delta} "
         f"val_word_acc={best['pooled_val_accuracy']:.4f} "
         f"(95% CI [{best['pooled_val_ci'][0]:.4f}, {best['pooled_val_ci'][1]:.4f}]), "
         f"seed_agreement={best['seed_agreement']}"
@@ -455,12 +641,17 @@ def main(n_words: int, alpha_min_candidates: list[float], n_seeds: int, workers:
             f"a finer weight grid)."
         )
 
-    # --- ONE-SHOT confirmatory evaluation on TEST. ------------------------
+    # --- ONE-SHOT confirmatory evaluation on TEST, using the SELECTED
+    # search_lambda_lm (re-decoding TEST at that lambda -- the VAL-side
+    # per_seed_raw for other lambdas is discarded, never touched again).
     test_data = np.load(TEST_NPZ_PATH, allow_pickle=True)
     X_test, y_test = test_data["X"], test_data["y"]
     test_probs = model.predict(X_test, batch_size=256, verbose=0)
     test_words = build_synthetic_words(y_test, n_words, seed=1234)  # fixed seed, used once
-    test_raw = precompute_raw_candidates(test_words, test_probs, n_workers=workers)
+    test_raw = precompute_raw_candidates(
+        test_words, test_probs, n_workers=workers,
+        ngram_model=ngram_model, search_lambda_lm=best_lambda,
+    )
     test_acc, test_margins = evaluate_from_raw(test_raw, best_weights)
     test_lo, test_hi = wilson_ci(sum(c for _, c in test_margins), len(test_margins))
     print(
@@ -473,18 +664,29 @@ def main(n_words: int, alpha_min_candidates: list[float], n_seeds: int, workers:
     with open(OUT_PATH, "w") as f:
         json.dump({
             "alpha": best_weights.alpha, "beta": best_weights.beta,
-            "gamma": best_weights.gamma, "tau_word": tau,
+            "gamma": best_weights.gamma, "delta": best_weights.delta,
+            "search_lambda_lm": best_lambda, "tau_word": tau,
             "tau_word_achieved_precision_target": tau_target,
             "tau_word_achieved_precision": tau_precision,
             "tau_word_n_kept": tau_n_kept,
             "tau_word_n_total": len(best["pooled_margins"]),
             "alpha_min_selected": best["alpha_min"],
             "alpha_min_candidates_swept": alpha_min_candidates,
+            "ngram_model_used": str(ngram_model_path) if ngram_model is not None else None,
+            "search_lambda_lm_candidates_swept": lambda_candidates,
+            "search_lambda_lm_sweep_summary": [
+                {
+                    "search_lambda_lm": r["search_lambda_lm"],
+                    "best_alpha_min": r["best"]["alpha_min"],
+                    "best_pooled_val_accuracy": r["best"]["pooled_val_accuracy"],
+                }
+                for r in sorted(lambda_runs, key=lambda r: r["search_lambda_lm"])
+            ],
             "floor_sweep_summary": [
                 {
                     "alpha_min": s["alpha_min"],
                     "alpha": s["weights"].alpha, "beta": s["weights"].beta,
-                    "gamma": s["weights"].gamma,
+                    "gamma": s["weights"].gamma, "delta": s["weights"].delta,
                     "seed_agreement": s["seed_agreement"],
                     "pooled_val_accuracy": s["pooled_val_accuracy"],
                     "pooled_val_ci": list(s["pooled_val_ci"]),
@@ -504,7 +706,11 @@ def main(n_words: int, alpha_min_candidates: list[float], n_seeds: int, workers:
                     "word-level data exists. TEST accuracy above is a single confirmatory "
                     "run, not part of the search. alpha_min was itself selected by sweeping "
                     "alpha_min_candidates_swept and picking the floor with the best pooled "
-                    "VAL accuracy (see floor_sweep_summary) -- not hand-picked.",
+                    "VAL accuracy (see floor_sweep_summary) -- not hand-picked. When an "
+                    "n-gram LM was available, search_lambda_lm was swept as an outer loop "
+                    "(each value requires a full re-decode, unlike alpha/beta/gamma/delta) "
+                    "and delta was folded into the same evidence-based grid+floor selection "
+                    "as alpha/beta/gamma (see search_lambda_lm_sweep_summary).",
         }, f, indent=2)
     print(f"[save] {OUT_PATH}")
 
@@ -529,6 +735,25 @@ if __name__ == "__main__":
                               "this is CPU-bound pure-Python work, so threads would be "
                               "serialized by the GIL and give no speedup; only separate "
                               "processes actually parallelize it.")
+    parser.add_argument(
+        "--ngram-model-path", type=str, default=str(NGRAM_MODEL_PATH),
+        help=f"Path to the trained n-gram LM (default: {NGRAM_MODEL_PATH}, built via "
+             f"`python -m experiments.build_ngram_model`). If the file doesn't exist, the "
+             f"script warns and falls back to the old no-LM behavior automatically.",
+    )
+    parser.add_argument(
+        "--no-ngram", action="store_true",
+        help="Force the old no-LM behavior even if an n-gram model file exists (delta stays "
+             "0.0, no search_lambda_lm sweep). Useful for an ablation comparison against the "
+             "with-LM run.",
+    )
+    parser.add_argument(
+        "--search-lambda-lm-candidates", type=str, default=None,
+        help="Comma-separated list of search_lambda_lm values to sweep (search-time LM "
+             "steering; only used when an n-gram model is loaded), e.g. '0,0.1,0.2,0.3'. "
+             "Each value requires a full re-decode, so keep this list short. Default: "
+             f"{DEFAULT_SEARCH_LAMBDA_LM_CANDIDATES}.",
+    )
     args = parser.parse_args()
 
     if args.alpha_min_candidates:
@@ -536,4 +761,11 @@ if __name__ == "__main__":
     else:
         candidates = DEFAULT_ALPHA_MIN_CANDIDATES
 
-    main(args.n_words, candidates, args.n_seeds, args.workers)
+    if args.search_lambda_lm_candidates:
+        lambda_candidates = [float(x) for x in args.search_lambda_lm_candidates.split(",")]
+    else:
+        lambda_candidates = DEFAULT_SEARCH_LAMBDA_LM_CANDIDATES
+
+    ngram_path = None if args.no_ngram else Path(args.ngram_model_path)
+
+    main(args.n_words, candidates, args.n_seeds, args.workers, ngram_path, lambda_candidates)

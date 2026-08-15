@@ -333,3 +333,6 @@ python test_beam_dictionary.py
 python -m experiments.tune_decoder_weights --n-words 800
 python test_beam_dictionary.py    # rerun -- now picks up tuned weights automatically
 python -m experiments.evaluate_decoder --n-words 800 --workers 4 --n-errors 30
+python -m experiments.build_ngram_model
+python -m experiments.tune_decoder_weights --n-words 800 --workers 4
+python test_beam_dictionary.py
