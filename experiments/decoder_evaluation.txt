@@ -1,56 +1,100 @@
 SYNTHETIC CONCATENATED-CHARACTER WORD EVALUATION -- NOT REAL CONTINUOUS HANDWRITING (ActionPlan.md Sec.4.3).
 
-TCN character-level accuracy (full TEST split, n=45149): 73.3039%
+TCN character-level accuracy (full TEST split, n=34020): 78.3892%
 
-Configuration                                  Beam Search  Dictionary   Accuracy              95% CI
------------------------------------------------------------------------------------------------------
-A. Greedy, no dictionary                                No          No    28.62%    [0.2560, 0.3185]
-B. Beam search only                                    Yes          No    28.62%    [0.2560, 0.3185]
-C. Dictionary correction only (greedy)                  No         Yes    68.62%    [0.6533, 0.7174]
-D. Beam search + dictionary correction                 Yes         Yes    76.62%    [0.7357, 0.7943]
+Configuration                                   Beam   Dict  N-gram   Accuracy              95% CI
+--------------------------------------------------------------------------------------------------
+A. Greedy, no dictionary                          No     No      No    39.00%    [0.3689, 0.4116]
+B. Beam search only                              Yes     No      No    39.00%    [0.3689, 0.4116]
+C. Dictionary correction only (greedy)            No    Yes      No    77.60%    [0.7572, 0.7937]
+D. Beam search + dictionary correction           Yes    Yes      No    85.40%    [0.8378, 0.8688]
+E. Beam search + dictionary + n-gram LM          Yes    Yes     Yes    85.90%    [0.8431, 0.8736]
+
+Configuration            Top-1     Top-3     Top-5
+--------------------------------------------------
+Beam                    39.00%    59.20%    62.55%
+Beam+Dictionary         85.40%    89.75%    90.00%
++ N-gram                85.90%    91.60%    91.90%
 
 Absolute improvement (percentage points):
-  B - A  (beam search alone)                              +0.00 pp
-  C - A  (dictionary correction alone)                    +40.00 pp
-  D - A  (combined vs. plain greedy)                      +48.00 pp
-  D - B  (dictionary's added value on top of beam search) +48.00 pp
-  D - C  (beam search's added value on top of dictionary) +8.00 pp
+  B - A  (beam search alone)                                 +0.00 pp
+  C - A  (dictionary correction alone)                       +38.60 pp
+  D - A  (combined vs. plain greedy)                         +46.40 pp
+  D - B  (dictionary's added value on top of beam search)    +46.40 pp
+  D - C  (beam search's added value on top of dictionary)    +7.80 pp
+  E - D  (n-gram LM's added value on top of beam+dictionary) +0.50 pp
 
 Beam search improves word accuracy by 0.00 percentage points over greedy decoding.
-Dictionary correction improves word accuracy by 40.00 percentage points over greedy decoding.
-Combined beam search + dictionary correction improves word accuracy by 48.00 percentage points over the greedy/no-correction baseline (vs. beam-alone: +48.00 pp; vs. dictionary-alone: +8.00 pp).
+Dictionary correction improves word accuracy by 38.60 percentage points over greedy decoding.
+Combined beam search + dictionary correction improves word accuracy by 46.40 percentage points over the greedy/no-correction baseline (vs. beam-alone: +46.40 pp; vs. dictionary-alone: +7.80 pp).
+Adding the character n-gram LM changes word accuracy by +0.50 percentage points relative to beam+dictionary alone.
 
-187/800 config-D words wrong; 30 sampled below
+292/2000 config-D words wrong; 30 sampled below
 
 TRUE           PREDICTED      RAW/BEAM CANDIDATE    REASON
 ----------------------------------------------------------
-hoop           boop           bOOp                  dictionary prior / word frequency bias -- the correct raw spelling WAS in the beam, but scoring (edit-distance or frequency weight) promoted a different candidate above it
-parlor         pavlov         DavlOr                beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-wave           wavy           WavY                  beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-keep           iced           KceD                  beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-handles        bradley        bdmdlea               beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
-parked         packed         Pavked                ambiguous characters / incorrect character classification (top beam candidate 'Pavked' is only edit-distance 1 from truth)
-hull           hole           Htle                  ambiguous characters / incorrect character classification (top beam candidate 'Htle' is only edit-distance 2 from truth)
-unicorn        worn           uqWaOrn               beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-dedicate       delicate       teoieatc              beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
-migrants       mndvahts       mndVahts              beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
-rebuilt        predict        rehdict               beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
-seeks          seems          seeHs                 ambiguous characters / incorrect character classification (top beam candidate 'seeHs' is only edit-distance 1 from truth)
-bitter         dieter         Diiter                beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-tease          case           tcdse                 ambiguous characters / incorrect character classification (top beam candidate 'tcdse' is only edit-distance 2 from truth)
-poole          pool           poolo                 ambiguous characters / incorrect character classification (top beam candidate 'poolo' is only edit-distance 1 from truth)
-ruined         rained         rainea                beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-stoke          stops          StOKT                 beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-abc            adc            QDC                   ambiguous characters / incorrect character classification (top beam candidate 'QDC' is only edit-distance 2 from truth)
-suicides       suicide        suiGidea              ambiguous characters / incorrect character classification (top beam candidate 'suiGidea' is only edit-distance 2 from truth)
-patent         path           pQtOht                beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-date           oath           oatc                  ambiguous characters / incorrect character classification (top beam candidate 'oatc' is only edit-distance 2 from truth)
-lava           love           lQVc                  beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-bates          hates          hdtes                 ambiguous characters / incorrect character classification (top beam candidate 'hdtes' is only edit-distance 2 from truth)
-forex          oven           foven                 beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-races          race           rdceC                 ambiguous characters / incorrect character classification (top beam candidate 'rdceC' is only edit-distance 2 from truth)
-holdings       hosting        hoZtings              beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-payback        payday         payDaot               beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
-lied           noted          Qted                  ambiguous characters / incorrect character classification (top beam candidate 'Qted' is only edit-distance 2 from truth)
-survive        satire         SuaWire               beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
-pharma         padma          pndVma                beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+chops          oops           OVoPS                 ambiguous characters / incorrect character classification (top beam candidate 'OVoPS' is only edit-distance 2 from truth)
+nesting        resting        resting               dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it
+provoke        brooke         brovoko               ambiguous characters / incorrect character classification (top beam candidate 'brovoko' is only edit-distance 2 from truth)
+renal          nepal          nendl                 ambiguous characters / incorrect character classification (top beam candidate 'nendl' is only edit-distance 2 from truth)
+places         does           DldoeS                beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+hymn           non            nynh                  beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+indy           ind            indV                  ambiguous characters / incorrect character classification (top beam candidate 'indV' is only edit-distance 1 from truth)
+malaria        mallard        malGrtd               beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+trusted        touched        trucEed               beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+spacex         space          spacet                ambiguous characters / incorrect character classification (top beam candidate 'spacet' is only edit-distance 1 from truth)
+hoc            cc             hcc                   ambiguous characters / incorrect character classification (top beam candidate 'hcc' is only edit-distance 1 from truth)
+pleaded        blended        bleddea               beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+delayed        tended         teudyed               beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+gpa            god            god                   ambiguous characters / incorrect character classification (top beam candidate 'god' is only edit-distance 2 from truth)
+her            ner            ner                   dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it
+who            wyo            wXO                   beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+lac            luc            lUc                   ambiguous characters / incorrect character classification (top beam candidate 'lUc' is only edit-distance 1 from truth)
+gregg          greg           gnecg                 ambiguous characters / incorrect character classification (top beam candidate 'gnecg' is only edit-distance 2 from truth)
+trick          truck          trcck                 ambiguous characters / incorrect character classification (top beam candidate 'trcck' is only edit-distance 1 from truth)
+slapped        slipped        slQbped               ambiguous characters / incorrect character classification (top beam candidate 'slQbped' is only edit-distance 2 from truth)
+bates          rates          Rates                 ambiguous characters / incorrect character classification (top beam candidate 'Rates' is only edit-distance 1 from truth)
+kin            ken            kPn                   ambiguous characters / incorrect character classification (top beam candidate 'kPn' is only edit-distance 1 from truth)
+boxed          bored          hored                 ambiguous characters / incorrect character classification (top beam candidate 'hored' is only edit-distance 2 from truth)
+weaving        wedding        Wedvihg               beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+call           cdc            cdcl                  ambiguous characters / incorrect character classification (top beam candidate 'cdcl' is only edit-distance 2 from truth)
+snap           sign           snXn                  ambiguous characters / incorrect character classification (top beam candidate 'snXn' is only edit-distance 2 from truth)
+nato           net            neto                  beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+thanking       thinking       thdnKihg              ambiguous characters / incorrect character classification (top beam candidate 'thdnKihg' is only edit-distance 2 from truth)
+apr            air            abr                   ambiguous characters / incorrect character classification (top beam candidate 'abr' is only edit-distance 1 from truth)
+leo            ceo            Ced                   ambiguous characters / incorrect character classification (top beam candidate 'Ced' is only edit-distance 2 from truth)
+
+282/2000 config-E words wrong; 30 sampled below
+
+TRUE           PREDICTED      RAW/BEAM CANDIDATE    REASON
+----------------------------------------------------------
+dam            dah            dGh                   beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+login          latin          lagin                 beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+noses          hosts          nosls                 n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+radar          vader          Vaddr                 beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+pradesh        brides         prGdesn               n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+brewing        drawing        DreWAng               ambiguous characters / incorrect character classification (top beam candidate 'DreWAng' is only edit-distance 2 from truth)
+price          brine          brive                 beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+hopped         added          hADoed                beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+boxed          honed          hored                 ambiguous characters / incorrect character classification (top beam candidate 'hored' is only edit-distance 2 from truth)
+right          ride           ridat                 beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score
+lining         aiming         aiming                ambiguous characters / incorrect character classification (top beam candidate 'aiming' is only edit-distance 2 from truth)
+coherent       confront       coNcront              beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+jeez           joe            joeZ                  n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+meh            heh            heh                   dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it
+boarded        bodied         bodyded               ambiguous characters / incorrect character classification (top beam candidate 'bodyded' is only edit-distance 2 from truth)
+lahore         canoe          Cahore                n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+abe            ade            dDl                   beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+noticed        notice         ncticco               beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence
+dried          died           dnied                 ambiguous characters / incorrect character classification (top beam candidate 'dnied' is only edit-distance 1 from truth)
+pose           post           post                  dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it
+bitterly       butter         butterlV              ambiguous characters / incorrect character classification (top beam candidate 'butterlV' is only edit-distance 2 from truth)
+dicks          dies           dicFs                 n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+man            han            kan                   ambiguous characters / incorrect character classification (top beam candidate 'kan' is only edit-distance 1 from truth)
+abc            abs            abc                   n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+itch           tor            itOr                  n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+parcels        access         DacCels               ambiguous characters / incorrect character classification (top beam candidate 'DacCels' is only edit-distance 2 from truth)
+rebuilt        rebuild        rebuili               ambiguous characters / incorrect character classification (top beam candidate 'rebuili' is only edit-distance 1 from truth)
+harriet        patriot        harriot               n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+ajax           dodd           dJaX                  n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction
+keeps          yuen           Koens                 ambiguous characters / incorrect character classification (top beam candidate 'Koens' is only edit-distance 2 from truth)

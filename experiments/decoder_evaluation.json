@@ -3,17 +3,20 @@
   "meta": {
     "split": "test",
     "seed": 1234,
-    "n_words_requested": 800,
-    "n_words_evaluated": 800,
+    "n_words_requested": 2000,
+    "n_words_evaluated": 2000,
     "n_words_dropped": 0,
     "beam_width": 5,
     "top_k": 5,
+    "ngram_available": true,
     "tuned_weights": {
       "alpha": 0.05,
       "beta": 0.85,
-      "gamma": 0.05
+      "gamma": 0.05,
+      "delta": 0.05
     },
-    "tau_word": 0.835,
+    "tau_word": 0.569,
+    "search_lambda_lm": 0.3,
     "tuned_weights_source": "D:\\BTP_Marker_Project\\IMU_WordPredict_BTP\\experiments\\decoder_weights.json",
     "tuned_weights_meta": {
       "alpha": 0.05,
@@ -21,11 +24,11 @@
       "gamma": 0.05,
       "delta": 0.05,
       "search_lambda_lm": 0.3,
-      "tau_word": 0.835,
+      "tau_word": 0.569,
       "tau_word_achieved_precision_target": 0.9,
-      "tau_word_achieved_precision": 1.0,
-      "tau_word_n_kept": 1,
-      "tau_word_n_total": 2400,
+      "tau_word_achieved_precision": 0.9020293911826452,
+      "tau_word_n_kept": 1429,
+      "tau_word_n_total": 6000,
       "alpha_min_selected": 0.05,
       "alpha_min_candidates_swept": [
         0.05,
@@ -49,22 +52,22 @@
         {
           "search_lambda_lm": 0.0,
           "best_alpha_min": 0.05,
-          "best_pooled_val_accuracy": 0.6870833333333334
+          "best_pooled_val_accuracy": 0.8253333333333334
         },
         {
           "search_lambda_lm": 0.1,
           "best_alpha_min": 0.05,
-          "best_pooled_val_accuracy": 0.71375
+          "best_pooled_val_accuracy": 0.8351666666666666
         },
         {
           "search_lambda_lm": 0.2,
           "best_alpha_min": 0.05,
-          "best_pooled_val_accuracy": 0.7358333333333333
+          "best_pooled_val_accuracy": 0.842
         },
         {
           "search_lambda_lm": 0.3,
           "best_alpha_min": 0.05,
-          "best_pooled_val_accuracy": 0.7470833333333333
+          "best_pooled_val_accuracy": 0.8505
         }
       ],
       "floor_sweep_summary": [
@@ -75,10 +78,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.7470833333333333,
+          "pooled_val_accuracy": 0.8505,
           "pooled_val_ci": [
-            0.7293069177158575,
-            0.7640700169374075
+            0.8412530945363406,
+            0.8592983657153757
           ]
         },
         {
@@ -88,10 +91,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.71625,
+          "pooled_val_accuracy": 0.8263333333333334,
           "pooled_val_ci": [
-            0.6978790785474069,
-            0.7339297394712181
+            0.8165397850166315,
+            0.8357092683228171
           ]
         },
         {
@@ -101,10 +104,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.6779166666666666,
+          "pooled_val_accuracy": 0.7933333333333333,
           "pooled_val_ci": [
-            0.6589502347456613,
-            0.6963144382677352
+            0.7829014564810947,
+            0.8033898274195331
           ]
         },
         {
@@ -114,10 +117,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.6558333333333334,
+          "pooled_val_accuracy": 0.776,
           "pooled_val_ci": [
-            0.6365900676478823,
-            0.6745785218298938
+            0.7652757130543364,
+            0.7863710858885272
           ]
         },
         {
@@ -127,10 +130,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.6425,
+          "pooled_val_accuracy": 0.7673333333333333,
           "pooled_val_ci": [
-            0.6231116999904507,
-            0.661432839050724
+            0.7564728078843255,
+            0.7778517485796558
           ]
         },
         {
@@ -140,10 +143,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.63375,
+          "pooled_val_accuracy": 0.7621666666666667,
           "pooled_val_ci": [
-            0.6142753033699222,
-            0.6527972025722332
+            0.7512279312334748,
+            0.7727699037527114
           ]
         },
         {
@@ -152,11 +155,11 @@
           "beta": 0.25,
           "gamma": 0.05,
           "delta": 0.05,
-          "seed_agreement": "2/3",
-          "pooled_val_accuracy": 0.63125,
+          "seed_agreement": "3/3",
+          "pooled_val_accuracy": 0.758,
           "pooled_val_ci": [
-            0.611751877795372,
-            0.6503286186899205
+            0.746999786127254,
+            0.7686700476671618
           ]
         },
         {
@@ -166,10 +169,10 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.6295833333333334,
+          "pooled_val_accuracy": 0.7543333333333333,
           "pooled_val_ci": [
-            0.6100699026717175,
-            0.6486825875090001
+            0.7432801741317843,
+            0.7650610186138737
           ]
         },
         {
@@ -179,272 +182,748 @@
           "gamma": 0.05,
           "delta": 0.05,
           "seed_agreement": "3/3",
-          "pooled_val_accuracy": 0.6270833333333333,
+          "pooled_val_accuracy": 0.7536666666666667,
           "pooled_val_ci": [
-            0.6075474011540811,
-            0.6462130795697736
+            0.742603995908881,
+            0.7644047166460939
           ]
         }
       ],
       "tuned_on_split": "val",
-      "val_word_accuracy": 0.7470833333333333,
+      "val_word_accuracy": 0.8505,
       "val_word_accuracy_95ci": [
-        0.7293069177158575,
-        0.7640700169374075
+        0.8412530945363406,
+        0.8592983657153757
       ],
-      "test_word_accuracy_confirmatory": 0.79,
+      "test_word_accuracy_confirmatory": 0.859,
       "test_word_accuracy_95ci": [
-        0.760422492283622,
-        0.8168056581380532
+        0.8430581306829457,
+        0.8735653788798861
       ],
-      "n_words_per_seed": 800,
+      "n_words_per_seed": 2000,
       "n_seeds": 3,
       "seed_agreement": "3/3",
       "note": "Tuned on SYNTHETIC concatenated-character words from the VAL split (ActionPlan.md 4.3), not real continuous writing -- retune once real word-level data exists. TEST accuracy above is a single confirmatory run, not part of the search. alpha_min was itself selected by sweeping alpha_min_candidates_swept and picking the floor with the best pooled VAL accuracy (see floor_sweep_summary) -- not hand-picked. When an n-gram LM was available, search_lambda_lm was swept as an outer loop (each value requires a full re-decode, unlike alpha/beta/gamma/delta) and delta was folded into the same evidence-based grid+floor selection as alpha/beta/gamma (see search_lambda_lm_sweep_summary)."
-    }
+    },
+    "ngram_model_path": "D:\\BTP_Marker_Project\\IMU_WordPredict_BTP\\experiments\\ngram_model.json",
+    "ngram_model_order": 4
   },
   "tcn_character_accuracy": {
-    "accuracy": 0.7330394914616049,
-    "n_samples": 45149
+    "accuracy": 0.7838918283362728,
+    "n_samples": 34020
   },
   "results": {
     "A": {
       "name": "Greedy, no dictionary",
       "beam_search": false,
       "dictionary_correction": false,
-      "n_correct": 229,
-      "n_words": 800,
-      "accuracy": 0.28625,
+      "ngram": false,
+      "n_correct": 780,
+      "n_words": 2000,
+      "accuracy": 0.39,
       "ci_95": [
-        0.2560072310650432,
-        0.3185358132362221
+        0.36885375886059285,
+        0.41156800701152
       ]
     },
     "B": {
       "name": "Beam search only",
       "beam_search": true,
       "dictionary_correction": false,
-      "n_correct": 229,
-      "n_words": 800,
-      "accuracy": 0.28625,
+      "ngram": false,
+      "n_correct": 780,
+      "n_words": 2000,
+      "accuracy": 0.39,
       "ci_95": [
-        0.2560072310650432,
-        0.3185358132362221
+        0.36885375886059285,
+        0.41156800701152
       ]
     },
     "C": {
       "name": "Dictionary correction only (greedy)",
       "beam_search": false,
       "dictionary_correction": true,
-      "n_correct": 549,
-      "n_words": 800,
-      "accuracy": 0.68625,
+      "ngram": false,
+      "n_correct": 1552,
+      "n_words": 2000,
+      "accuracy": 0.776,
       "ci_95": [
-        0.6532698063103602,
-        0.7174499971932156
+        0.7572083176030392,
+        0.7937334334814777
       ]
     },
     "D": {
       "name": "Beam search + dictionary correction",
       "beam_search": true,
       "dictionary_correction": true,
-      "n_correct": 613,
-      "n_words": 800,
-      "accuracy": 0.76625,
+      "ngram": false,
+      "n_correct": 1708,
+      "n_words": 2000,
+      "accuracy": 0.854,
       "ci_95": [
-        0.7356927801990337,
-        0.7942623751450042
+        0.8378457315026715,
+        0.8687969492361654
       ]
+    },
+    "E": {
+      "name": "Beam search + dictionary + n-gram LM",
+      "beam_search": true,
+      "dictionary_correction": true,
+      "ngram": true,
+      "n_correct": 1718,
+      "n_words": 2000,
+      "accuracy": 0.859,
+      "ci_95": [
+        0.8430581306829457,
+        0.8735653788798861
+      ]
+    }
+  },
+  "topk_accuracy": {
+    "B": {
+      "1": 0.39,
+      "3": 0.592,
+      "5": 0.6255
+    },
+    "D": {
+      "1": 0.854,
+      "3": 0.8975,
+      "5": 0.9
+    },
+    "E": {
+      "1": 0.859,
+      "3": 0.916,
+      "5": 0.919
     }
   },
   "improvements": {
     "B_minus_A": 0.0,
-    "C_minus_A": 0.4,
-    "D_minus_A": 0.48,
-    "D_minus_B": 0.48,
-    "D_minus_C": 0.07999999999999996
+    "C_minus_A": 0.386,
+    "D_minus_A": 0.46399999999999997,
+    "D_minus_B": 0.46399999999999997,
+    "D_minus_C": 0.07799999999999996,
+    "E_minus_D": 0.0050000000000000044
   },
+  "ngram_effect_matrix": {
+    "fixed_by_lm": 70,
+    "regressed_by_lm": 60,
+    "unchanged_correct": 1648,
+    "unchanged_wrong": 222
+  },
+  "edit_distance_breakdown": {
+    "0": {
+      "D": [
+        779,
+        780
+      ],
+      "E": [
+        761,
+        780
+      ]
+    },
+    "1": {
+      "D": [
+        687,
+        799
+      ],
+      "E": [
+        684,
+        799
+      ]
+    },
+    "2": {
+      "D": [
+        216,
+        340
+      ],
+      "E": [
+        233,
+        340
+      ]
+    },
+    ">2": {
+      "D": [
+        26,
+        81
+      ],
+      "E": [
+        40,
+        81
+      ]
+    }
+  },
+  "order_sweep": [
+    {
+      "order": 2,
+      "n_correct": 335,
+      "n_words": 400,
+      "accuracy": 0.8375,
+      "ci_95": [
+        0.7981658302462488,
+        0.8704131373489669
+      ]
+    },
+    {
+      "order": 3,
+      "n_correct": 339,
+      "n_words": 400,
+      "accuracy": 0.8475,
+      "ci_95": [
+        0.8089753764784815,
+        0.8794133383047406
+      ]
+    },
+    {
+      "order": 4,
+      "n_correct": 339,
+      "n_words": 400,
+      "accuracy": 0.8475,
+      "ci_95": [
+        0.8089753764784815,
+        0.8794133383047406
+      ]
+    },
+    {
+      "order": 5,
+      "n_correct": 339,
+      "n_words": 400,
+      "accuracy": 0.8475,
+      "ci_95": [
+        0.8089753764784815,
+        0.8794133383047406
+      ]
+    }
+  ],
+  "lambda_sweep": [
+    {
+      "search_lambda_lm": 0.0,
+      "n_correct": 331,
+      "n_words": 400,
+      "accuracy": 0.8275,
+      "ci_95": [
+        0.7874038632508434,
+        0.8613653571563658
+      ]
+    },
+    {
+      "search_lambda_lm": 0.05,
+      "n_correct": 331,
+      "n_words": 400,
+      "accuracy": 0.8275,
+      "ci_95": [
+        0.7874038632508434,
+        0.8613653571563658
+      ]
+    },
+    {
+      "search_lambda_lm": 0.1,
+      "n_correct": 333,
+      "n_words": 400,
+      "accuracy": 0.8325,
+      "ci_95": [
+        0.7927791128508476,
+        0.8658949811503649
+      ]
+    },
+    {
+      "search_lambda_lm": 0.15,
+      "n_correct": 337,
+      "n_words": 400,
+      "accuracy": 0.8425,
+      "ci_95": [
+        0.8035644342063322,
+        0.8749194069828866
+      ]
+    },
+    {
+      "search_lambda_lm": 0.2,
+      "n_correct": 341,
+      "n_words": 400,
+      "accuracy": 0.8525,
+      "ci_95": [
+        0.8143991454822667,
+        0.8838944428949586
+      ]
+    },
+    {
+      "search_lambda_lm": 0.25,
+      "n_correct": 342,
+      "n_words": 400,
+      "accuracy": 0.855,
+      "ci_95": [
+        0.8171160037000451,
+        0.8861300214741816
+      ]
+    },
+    {
+      "search_lambda_lm": 0.3,
+      "n_correct": 339,
+      "n_words": 400,
+      "accuracy": 0.8475,
+      "ci_95": [
+        0.8089753764784815,
+        0.8794133383047406
+      ]
+    }
+  ],
+  "beam_width_sweep": [
+    {
+      "beam_width": 5,
+      "n_correct": 1718,
+      "n_words": 2000,
+      "accuracy": 0.859,
+      "ci_95": [
+        0.8430581306829457,
+        0.8735653788798861
+      ]
+    },
+    {
+      "beam_width": 10,
+      "n_correct": 1760,
+      "n_words": 2000,
+      "accuracy": 0.88,
+      "ci_95": [
+        0.8650244486811911,
+        0.8935185419424191
+      ]
+    },
+    {
+      "beam_width": 15,
+      "n_correct": 1756,
+      "n_words": 2000,
+      "accuracy": 0.878,
+      "ci_95": [
+        0.8629268412586188,
+        0.8916238178353934
+      ]
+    },
+    {
+      "beam_width": 20,
+      "n_correct": 1760,
+      "n_words": 2000,
+      "accuracy": 0.88,
+      "ci_95": [
+        0.8650244486811911,
+        0.8935185419424191
+      ]
+    }
+  ],
+  "latency": {
+    "n_words": 100,
+    "no_lm_total_seconds": 74.57082830002764,
+    "no_lm_ms_per_word": 745.7082830002764,
+    "with_lm_total_seconds": 53.07887949998258,
+    "with_lm_ms_per_word": 530.7887949998258,
+    "overhead_ms_per_word": -214.91948800045066
+  },
+  "confidence_coverage_table": [
+    {
+      "tau": 0.4,
+      "coverage": 1.0,
+      "n_kept": 2000,
+      "accuracy_among_kept": 0.859
+    },
+    {
+      "tau": 0.5,
+      "coverage": 1.0,
+      "n_kept": 2000,
+      "accuracy_among_kept": 0.859
+    },
+    {
+      "tau": 0.569,
+      "coverage": 0.2505,
+      "n_kept": 501,
+      "accuracy_among_kept": 0.8922155688622755
+    },
+    {
+      "tau": 0.6,
+      "coverage": 0.1735,
+      "n_kept": 347,
+      "accuracy_among_kept": 0.9048991354466859
+    },
+    {
+      "tau": 0.7,
+      "coverage": 0.048,
+      "n_kept": 96,
+      "accuracy_among_kept": 0.8854166666666666
+    },
+    {
+      "tau": 0.8,
+      "coverage": 0.002,
+      "n_kept": 4,
+      "accuracy_among_kept": 1.0
+    },
+    {
+      "tau": 0.9,
+      "coverage": 0.0,
+      "n_kept": 0,
+      "accuracy_among_kept": null
+    }
+  ],
   "sample_errors_config_D": [
     {
-      "true": "hoop",
-      "predicted": "boop",
-      "raw_or_beam_candidate": "bOOp",
-      "reason": "dictionary prior / word frequency bias -- the correct raw spelling WAS in the beam, but scoring (edit-distance or frequency weight) promoted a different candidate above it"
+      "true": "chops",
+      "predicted": "oops",
+      "raw_or_beam_candidate": "OVoPS",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'OVoPS' is only edit-distance 2 from truth)"
     },
     {
-      "true": "parlor",
-      "predicted": "pavlov",
-      "raw_or_beam_candidate": "DavlOr",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "nesting",
+      "predicted": "resting",
+      "raw_or_beam_candidate": "resting",
+      "reason": "dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it"
     },
     {
-      "true": "wave",
-      "predicted": "wavy",
-      "raw_or_beam_candidate": "WavY",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "provoke",
+      "predicted": "brooke",
+      "raw_or_beam_candidate": "brovoko",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'brovoko' is only edit-distance 2 from truth)"
     },
     {
-      "true": "keep",
-      "predicted": "iced",
-      "raw_or_beam_candidate": "KceD",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "renal",
+      "predicted": "nepal",
+      "raw_or_beam_candidate": "nendl",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'nendl' is only edit-distance 2 from truth)"
     },
     {
-      "true": "handles",
-      "predicted": "bradley",
-      "raw_or_beam_candidate": "bdmdlea",
+      "true": "places",
+      "predicted": "does",
+      "raw_or_beam_candidate": "DldoeS",
       "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
     },
     {
-      "true": "parked",
-      "predicted": "packed",
-      "raw_or_beam_candidate": "Pavked",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'Pavked' is only edit-distance 1 from truth)"
-    },
-    {
-      "true": "hull",
-      "predicted": "hole",
-      "raw_or_beam_candidate": "Htle",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'Htle' is only edit-distance 2 from truth)"
-    },
-    {
-      "true": "unicorn",
-      "predicted": "worn",
-      "raw_or_beam_candidate": "uqWaOrn",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
-    },
-    {
-      "true": "dedicate",
-      "predicted": "delicate",
-      "raw_or_beam_candidate": "teoieatc",
+      "true": "hymn",
+      "predicted": "non",
+      "raw_or_beam_candidate": "nynh",
       "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
     },
     {
-      "true": "migrants",
-      "predicted": "mndvahts",
-      "raw_or_beam_candidate": "mndVahts",
+      "true": "indy",
+      "predicted": "ind",
+      "raw_or_beam_candidate": "indV",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'indV' is only edit-distance 1 from truth)"
+    },
+    {
+      "true": "malaria",
+      "predicted": "mallard",
+      "raw_or_beam_candidate": "malGrtd",
       "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
     },
     {
-      "true": "rebuilt",
-      "predicted": "predict",
-      "raw_or_beam_candidate": "rehdict",
-      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+      "true": "trusted",
+      "predicted": "touched",
+      "raw_or_beam_candidate": "trucEed",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
     },
     {
-      "true": "seeks",
-      "predicted": "seems",
-      "raw_or_beam_candidate": "seeHs",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'seeHs' is only edit-distance 1 from truth)"
+      "true": "spacex",
+      "predicted": "space",
+      "raw_or_beam_candidate": "spacet",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'spacet' is only edit-distance 1 from truth)"
     },
     {
-      "true": "bitter",
-      "predicted": "dieter",
-      "raw_or_beam_candidate": "Diiter",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "hoc",
+      "predicted": "cc",
+      "raw_or_beam_candidate": "hcc",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'hcc' is only edit-distance 1 from truth)"
     },
     {
-      "true": "tease",
-      "predicted": "case",
-      "raw_or_beam_candidate": "tcdse",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'tcdse' is only edit-distance 2 from truth)"
+      "true": "pleaded",
+      "predicted": "blended",
+      "raw_or_beam_candidate": "bleddea",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
     },
     {
-      "true": "poole",
-      "predicted": "pool",
-      "raw_or_beam_candidate": "poolo",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'poolo' is only edit-distance 1 from truth)"
+      "true": "delayed",
+      "predicted": "tended",
+      "raw_or_beam_candidate": "teudyed",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
     },
     {
-      "true": "ruined",
-      "predicted": "rained",
-      "raw_or_beam_candidate": "rainea",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "gpa",
+      "predicted": "god",
+      "raw_or_beam_candidate": "god",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'god' is only edit-distance 2 from truth)"
     },
     {
-      "true": "stoke",
-      "predicted": "stops",
-      "raw_or_beam_candidate": "StOKT",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "her",
+      "predicted": "ner",
+      "raw_or_beam_candidate": "ner",
+      "reason": "dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it"
     },
     {
-      "true": "abc",
-      "predicted": "adc",
-      "raw_or_beam_candidate": "QDC",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'QDC' is only edit-distance 2 from truth)"
+      "true": "who",
+      "predicted": "wyo",
+      "raw_or_beam_candidate": "wXO",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
     },
     {
-      "true": "suicides",
-      "predicted": "suicide",
-      "raw_or_beam_candidate": "suiGidea",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'suiGidea' is only edit-distance 2 from truth)"
+      "true": "lac",
+      "predicted": "luc",
+      "raw_or_beam_candidate": "lUc",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'lUc' is only edit-distance 1 from truth)"
     },
     {
-      "true": "patent",
-      "predicted": "path",
-      "raw_or_beam_candidate": "pQtOht",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "gregg",
+      "predicted": "greg",
+      "raw_or_beam_candidate": "gnecg",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'gnecg' is only edit-distance 2 from truth)"
     },
     {
-      "true": "date",
-      "predicted": "oath",
-      "raw_or_beam_candidate": "oatc",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'oatc' is only edit-distance 2 from truth)"
+      "true": "trick",
+      "predicted": "truck",
+      "raw_or_beam_candidate": "trcck",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'trcck' is only edit-distance 1 from truth)"
     },
     {
-      "true": "lava",
-      "predicted": "love",
-      "raw_or_beam_candidate": "lQVc",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "slapped",
+      "predicted": "slipped",
+      "raw_or_beam_candidate": "slQbped",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'slQbped' is only edit-distance 2 from truth)"
     },
     {
       "true": "bates",
-      "predicted": "hates",
-      "raw_or_beam_candidate": "hdtes",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'hdtes' is only edit-distance 2 from truth)"
+      "predicted": "rates",
+      "raw_or_beam_candidate": "Rates",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'Rates' is only edit-distance 1 from truth)"
     },
     {
-      "true": "forex",
-      "predicted": "oven",
-      "raw_or_beam_candidate": "foven",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "kin",
+      "predicted": "ken",
+      "raw_or_beam_candidate": "kPn",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'kPn' is only edit-distance 1 from truth)"
     },
     {
-      "true": "races",
-      "predicted": "race",
-      "raw_or_beam_candidate": "rdceC",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'rdceC' is only edit-distance 2 from truth)"
+      "true": "boxed",
+      "predicted": "bored",
+      "raw_or_beam_candidate": "hored",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'hored' is only edit-distance 2 from truth)"
     },
     {
-      "true": "holdings",
-      "predicted": "hosting",
-      "raw_or_beam_candidate": "hoZtings",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "weaving",
+      "predicted": "wedding",
+      "raw_or_beam_candidate": "Wedvihg",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
     },
     {
-      "true": "payback",
-      "predicted": "payday",
-      "raw_or_beam_candidate": "payDaot",
-      "reason": "beam+dictionary scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+      "true": "call",
+      "predicted": "cdc",
+      "raw_or_beam_candidate": "cdcl",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'cdcl' is only edit-distance 2 from truth)"
     },
     {
-      "true": "lied",
-      "predicted": "noted",
-      "raw_or_beam_candidate": "Qted",
-      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'Qted' is only edit-distance 2 from truth)"
+      "true": "snap",
+      "predicted": "sign",
+      "raw_or_beam_candidate": "snXn",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'snXn' is only edit-distance 2 from truth)"
     },
     {
-      "true": "survive",
-      "predicted": "satire",
-      "raw_or_beam_candidate": "SuaWire",
-      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+      "true": "nato",
+      "predicted": "net",
+      "raw_or_beam_candidate": "neto",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
     },
     {
-      "true": "pharma",
-      "predicted": "padma",
-      "raw_or_beam_candidate": "pndVma",
-      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+      "true": "thanking",
+      "predicted": "thinking",
+      "raw_or_beam_candidate": "thdnKihg",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'thdnKihg' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "apr",
+      "predicted": "air",
+      "raw_or_beam_candidate": "abr",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'abr' is only edit-distance 1 from truth)"
+    },
+    {
+      "true": "leo",
+      "predicted": "ceo",
+      "raw_or_beam_candidate": "Ced",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'Ced' is only edit-distance 2 from truth)"
     }
   ],
-  "n_errors_total_config_D": 187
+  "n_errors_total_config_D": 292,
+  "sample_errors_config_E": [
+    {
+      "true": "dam",
+      "predicted": "dah",
+      "raw_or_beam_candidate": "dGh",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+    },
+    {
+      "true": "login",
+      "predicted": "latin",
+      "raw_or_beam_candidate": "lagin",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+    },
+    {
+      "true": "noses",
+      "predicted": "hosts",
+      "raw_or_beam_candidate": "nosls",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "radar",
+      "predicted": "vader",
+      "raw_or_beam_candidate": "Vaddr",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+    },
+    {
+      "true": "pradesh",
+      "predicted": "brides",
+      "raw_or_beam_candidate": "prGdesn",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "brewing",
+      "predicted": "drawing",
+      "raw_or_beam_candidate": "DreWAng",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'DreWAng' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "price",
+      "predicted": "brine",
+      "raw_or_beam_candidate": "brive",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+    },
+    {
+      "true": "hopped",
+      "predicted": "added",
+      "raw_or_beam_candidate": "hADoed",
+      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+    },
+    {
+      "true": "boxed",
+      "predicted": "honed",
+      "raw_or_beam_candidate": "hored",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'hored' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "right",
+      "predicted": "ride",
+      "raw_or_beam_candidate": "ridat",
+      "reason": "beam+dictionary/LM scoring -- the true word was reachable via edit-distance correction from some beam candidate, but was outranked by another candidate's final_score"
+    },
+    {
+      "true": "lining",
+      "predicted": "aiming",
+      "raw_or_beam_candidate": "aiming",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'aiming' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "coherent",
+      "predicted": "confront",
+      "raw_or_beam_candidate": "coNcront",
+      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+    },
+    {
+      "true": "jeez",
+      "predicted": "joe",
+      "raw_or_beam_candidate": "joeZ",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "meh",
+      "predicted": "heh",
+      "raw_or_beam_candidate": "heh",
+      "reason": "dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it"
+    },
+    {
+      "true": "boarded",
+      "predicted": "bodied",
+      "raw_or_beam_candidate": "bodyded",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'bodyded' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "lahore",
+      "predicted": "canoe",
+      "raw_or_beam_candidate": "Cahore",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "abe",
+      "predicted": "ade",
+      "raw_or_beam_candidate": "dDl",
+      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+    },
+    {
+      "true": "noticed",
+      "predicted": "notice",
+      "raw_or_beam_candidate": "ncticco",
+      "reason": "beam search candidate limitation -- true spelling is far (edit-distance > 2) from every candidate in the beam; the underlying TCN likely misclassified multiple characters and the beam/top_k width didn't recover the true sequence"
+    },
+    {
+      "true": "dried",
+      "predicted": "died",
+      "raw_or_beam_candidate": "dnied",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'dnied' is only edit-distance 1 from truth)"
+    },
+    {
+      "true": "pose",
+      "predicted": "post",
+      "raw_or_beam_candidate": "post",
+      "reason": "dictionary/LM prior -- the correct raw spelling WAS in the beam, but scoring (edit-distance, frequency, or LM weight) promoted a different candidate above it"
+    },
+    {
+      "true": "bitterly",
+      "predicted": "butter",
+      "raw_or_beam_candidate": "butterlV",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'butterlV' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "dicks",
+      "predicted": "dies",
+      "raw_or_beam_candidate": "dicFs",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "man",
+      "predicted": "han",
+      "raw_or_beam_candidate": "kan",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'kan' is only edit-distance 1 from truth)"
+    },
+    {
+      "true": "abc",
+      "predicted": "abs",
+      "raw_or_beam_candidate": "abc",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "itch",
+      "predicted": "tor",
+      "raw_or_beam_candidate": "itOr",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "parcels",
+      "predicted": "access",
+      "raw_or_beam_candidate": "DacCels",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'DacCels' is only edit-distance 2 from truth)"
+    },
+    {
+      "true": "rebuilt",
+      "predicted": "rebuild",
+      "raw_or_beam_candidate": "rebuili",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'rebuili' is only edit-distance 1 from truth)"
+    },
+    {
+      "true": "harriet",
+      "predicted": "patriot",
+      "raw_or_beam_candidate": "harriot",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "ajax",
+      "predicted": "dodd",
+      "raw_or_beam_candidate": "dJaX",
+      "reason": "n-gram language-model regression -- beam+dictionary alone (config D) already predicted this word correctly; attaching the n-gram LM (search-time steering and/or final re-ranking) changed the outcome to a wrong prediction"
+    },
+    {
+      "true": "keeps",
+      "predicted": "yuen",
+      "raw_or_beam_candidate": "Koens",
+      "reason": "ambiguous characters / incorrect character classification (top beam candidate 'Koens' is only edit-distance 2 from truth)"
+    }
+  ],
+  "n_errors_total_config_E": 282
 }

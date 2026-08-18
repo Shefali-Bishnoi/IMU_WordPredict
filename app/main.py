@@ -117,7 +117,7 @@ def health() -> dict:
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: StrokeRequest) -> PredictResponse:
     recognizer = _require_recognizer()
-    if not req.sensor or len(req.sensor[0]) != 9:
+    if not req.sensor or any(len(row) != 9 for row in req.sensor):
         raise HTTPException(status_code=400, detail="sensor must be rows of 9 values")
     result = recognizer.predict(req.sensor, top_k=req.top_k)
     return PredictResponse(**result)
@@ -151,7 +151,7 @@ class StrokeInSessionResponse(BaseModel):
 def submit_stroke(session_id: str, req: StrokeRequest) -> StrokeInSessionResponse:
     recognizer = _require_recognizer()
     session = _require_session(session_id)
-    if not req.sensor or len(req.sensor[0]) != 9:
+    if not req.sensor or any(len(row) != 9 for row in req.sensor):
         raise HTTPException(status_code=400, detail="sensor must be rows of 9 values")
 
     result = recognizer.predict(req.sensor, top_k=req.top_k)

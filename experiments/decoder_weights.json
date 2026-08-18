@@ -4,11 +4,11 @@
   "gamma": 0.05,
   "delta": 0.05,
   "search_lambda_lm": 0.3,
-  "tau_word": 0.835,
+  "tau_word": 0.569,
   "tau_word_achieved_precision_target": 0.9,
-  "tau_word_achieved_precision": 1.0,
-  "tau_word_n_kept": 1,
-  "tau_word_n_total": 2400,
+  "tau_word_achieved_precision": 0.9020293911826452,
+  "tau_word_n_kept": 1429,
+  "tau_word_n_total": 6000,
   "alpha_min_selected": 0.05,
   "alpha_min_candidates_swept": [
     0.05,
@@ -32,22 +32,22 @@
     {
       "search_lambda_lm": 0.0,
       "best_alpha_min": 0.05,
-      "best_pooled_val_accuracy": 0.6870833333333334
+      "best_pooled_val_accuracy": 0.8253333333333334
     },
     {
       "search_lambda_lm": 0.1,
       "best_alpha_min": 0.05,
-      "best_pooled_val_accuracy": 0.71375
+      "best_pooled_val_accuracy": 0.8351666666666666
     },
     {
       "search_lambda_lm": 0.2,
       "best_alpha_min": 0.05,
-      "best_pooled_val_accuracy": 0.7358333333333333
+      "best_pooled_val_accuracy": 0.842
     },
     {
       "search_lambda_lm": 0.3,
       "best_alpha_min": 0.05,
-      "best_pooled_val_accuracy": 0.7470833333333333
+      "best_pooled_val_accuracy": 0.8505
     }
   ],
   "floor_sweep_summary": [
@@ -58,10 +58,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.7470833333333333,
+      "pooled_val_accuracy": 0.8505,
       "pooled_val_ci": [
-        0.7293069177158575,
-        0.7640700169374075
+        0.8412530945363406,
+        0.8592983657153757
       ]
     },
     {
@@ -71,10 +71,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.71625,
+      "pooled_val_accuracy": 0.8263333333333334,
       "pooled_val_ci": [
-        0.6978790785474069,
-        0.7339297394712181
+        0.8165397850166315,
+        0.8357092683228171
       ]
     },
     {
@@ -84,10 +84,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.6779166666666666,
+      "pooled_val_accuracy": 0.7933333333333333,
       "pooled_val_ci": [
-        0.6589502347456613,
-        0.6963144382677352
+        0.7829014564810947,
+        0.8033898274195331
       ]
     },
     {
@@ -97,10 +97,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.6558333333333334,
+      "pooled_val_accuracy": 0.776,
       "pooled_val_ci": [
-        0.6365900676478823,
-        0.6745785218298938
+        0.7652757130543364,
+        0.7863710858885272
       ]
     },
     {
@@ -110,10 +110,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.6425,
+      "pooled_val_accuracy": 0.7673333333333333,
       "pooled_val_ci": [
-        0.6231116999904507,
-        0.661432839050724
+        0.7564728078843255,
+        0.7778517485796558
       ]
     },
     {
@@ -123,10 +123,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.63375,
+      "pooled_val_accuracy": 0.7621666666666667,
       "pooled_val_ci": [
-        0.6142753033699222,
-        0.6527972025722332
+        0.7512279312334748,
+        0.7727699037527114
       ]
     },
     {
@@ -135,11 +135,11 @@
       "beta": 0.25,
       "gamma": 0.05,
       "delta": 0.05,
-      "seed_agreement": "2/3",
-      "pooled_val_accuracy": 0.63125,
+      "seed_agreement": "3/3",
+      "pooled_val_accuracy": 0.758,
       "pooled_val_ci": [
-        0.611751877795372,
-        0.6503286186899205
+        0.746999786127254,
+        0.7686700476671618
       ]
     },
     {
@@ -149,10 +149,10 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.6295833333333334,
+      "pooled_val_accuracy": 0.7543333333333333,
       "pooled_val_ci": [
-        0.6100699026717175,
-        0.6486825875090001
+        0.7432801741317843,
+        0.7650610186138737
       ]
     },
     {
@@ -162,25 +162,25 @@
       "gamma": 0.05,
       "delta": 0.05,
       "seed_agreement": "3/3",
-      "pooled_val_accuracy": 0.6270833333333333,
+      "pooled_val_accuracy": 0.7536666666666667,
       "pooled_val_ci": [
-        0.6075474011540811,
-        0.6462130795697736
+        0.742603995908881,
+        0.7644047166460939
       ]
     }
   ],
   "tuned_on_split": "val",
-  "val_word_accuracy": 0.7470833333333333,
+  "val_word_accuracy": 0.8505,
   "val_word_accuracy_95ci": [
-    0.7293069177158575,
-    0.7640700169374075
+    0.8412530945363406,
+    0.8592983657153757
   ],
-  "test_word_accuracy_confirmatory": 0.79,
+  "test_word_accuracy_confirmatory": 0.859,
   "test_word_accuracy_95ci": [
-    0.760422492283622,
-    0.8168056581380532
+    0.8430581306829457,
+    0.8735653788798861
   ],
-  "n_words_per_seed": 800,
+  "n_words_per_seed": 2000,
   "n_seeds": 3,
   "seed_agreement": "3/3",
   "note": "Tuned on SYNTHETIC concatenated-character words from the VAL split (ActionPlan.md 4.3), not real continuous writing -- retune once real word-level data exists. TEST accuracy above is a single confirmatory run, not part of the search. alpha_min was itself selected by sweeping alpha_min_candidates_swept and picking the floor with the best pooled VAL accuracy (see floor_sweep_summary) -- not hand-picked. When an n-gram LM was available, search_lambda_lm was swept as an outer loop (each value requires a full re-decode, unlike alpha/beta/gamma/delta) and delta was folded into the same evidence-based grid+floor selection as alpha/beta/gamma (see search_lambda_lm_sweep_summary)."
