@@ -338,3 +338,5 @@ python -m experiments.tune_decoder_weights --n-words 800 --workers 4
 python test_beam_dictionary.py
 
 python -m experiments.evaluate_decoder --n-words 2000 --workers 4  --beam-width-sweep-widths 5,10,15,20 --beam-width-sweep-words 2000
+python .\smoke_test_personalization.py
+uvicorn app.main:app --reload
