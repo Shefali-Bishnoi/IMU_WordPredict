@@ -1,342 +1,283 @@
-# WordPredict — Priority 0–4 (dictionary slice) implementation
+# WordPredict — IMU Air-Writing Recognition
 
-This is a real, working codebase — not another planning doc. It implements,
-end to end, from `ActionPlan.md`:
+Write letters in the air with a 9-axis IMU marker; get corrected English words out the other end.
 
-- **Priority 0** — clean, reproducible preprocessing + a baseline CNN-LSTM.
-- **Priority 1** — comparing three sensor architectures (CNN-LSTM, CNN-BiLSTM, TCN).
-- **Priority 2** — full probability-vector output (no internal argmax), done from day one.
-- **Priority 3** — beam search over per-position character probabilities.
-- **Priority 4 (dictionary/wordfreq slice)** — beam candidates corrected against
-  a real English vocabulary (edit-distance + word frequency), with the
-  three score weights and the confidence threshold tuned experimentally
-  (never hand-picked) against a held-out split.
-
-Structured so **Priority 5** (the personalization adapter) slots in without
-rewriting anything already here — see "Deliberately not done yet" below for
-exactly what's left.
-
-**Project status:** Priorities 0–3 and the dictionary slice of Priority 4
-are implemented, tuned, and evaluated. See
-`experiments/architecture_comparison.md` for the sensor-model results and
-`experiments/decoder_evaluation.md` / `FuturePlan.md` §6 for the decoder
-ablation results. Not yet started: an n-gram/Transformer language model
-(Priority 4's stretch options), the personalization adapter (Priority 5),
-and automatic word-boundary detection (`FuturePlan.md` v2/v3/v4).
-
----
-
-## Priority 0 — what was actually true before this
-
-**What was actually true before this:** nothing in the ActionPlan was
-implemented. `GRU_model.ipynb` was the only code that existed, and on close
-inspection it has real bugs worth knowing about before you trust its
-numbers:
-
-1. It only ever walks the `"capital letters"` directory
-   (`if filename == 'capital letters'`) — `"small letters"` is never
-   loaded, so it was never actually training on all 52 classes.
-2. Its label encoding (`ord(c) - ord('A')` and `ord(c) - ord('a')`
-   independently) maps both cases to the **same** 0–25 index, so even if
-   lowercase had been included, `'A'` and `'a'` would collide. Its own
-   `to_categorical` output confirms this: shape `(N, 26)`, not `(N, 52)`.
-3. Its padding rows are missing the timestamp column (11 fields instead of
-   12), which doesn't match the file schema at all.
-4. Preprocessing mutates the original `.txt` files in place and hardcodes
-   the test participant IDs inline in a notebook cell — not reproducible,
-   not reviewable.
-
-All four are fixed here.
-
-### What's implemented (Priority 0)
-
-- **`preprocessing/io.py`** — walks `capital letters/` **and**
-  `small letters/`, parses the real 12-column schema (label, timestamp,
-  9 sensor channels, writing flag) confirmed from the sample data.
-- **`preprocessing/clean.py`** — vectorized `'ovf'`/`'nan'` handling
-  (forward-fill → back-fill → 0.0 fallback per channel), replacing the old
-  per-cell nested-loop scan.
-- **`preprocessing/segment.py`** — the single shared `preprocess()`
-  function used identically at training and inference time (pad/trim →
-  center-window → normalize with *persisted* train-only stats). Also
-  implements the timestamp-aware resampling option from ActionPlan.md
-  §4.4 (`--resample` flag) so you can A/B it against raw sequential rows.
-- **`preprocessing/split.py`** — frozen, participant-disjoint train/val/test
-  split saved to `data/splits/participant_split.json` (not hardcoded).
-- **`data/build_dataset.py`** — turns raw `.txt` files into normalized
-  `.npz` arrays. Correct 52-class labels: A–Z → 0–25, a–z → 26–51.
-- **`inference/realtime.py`** + **`app/main.py`** — a `CharacterRecognizer`
-  class and a FastAPI server (`/predict`) that return the **full 52-class
-  probability vector**, not argmax (Priority 2, done from day one) — this
-  is what the future beam decoder (Priority 3) will consume, and what a
-  website frontend can already call today. Always serves the `cnn_lstm`
-  architecture's saved model (see Priority 1 below for how to point it at
-  a different winner once you've picked one).
-
----
-
-## Priority 1 — comparing sensor architectures
-
-ActionPlan.md §9 calls for training and comparing **three** sensor
-architectures under identical conditions (same split, same preprocessing,
-same training budget) before picking a winner — never assuming the
-fanciest one wins.
-
-### What's implemented (Priority 1)
-
-- **`models/cnn_lstm.py`** — Option A, the Priority 0 baseline,
-  unchanged. Conv1D(64→128→256) → LSTM(32) → Dense(256→128→52).
-- **`models/cnn_bilstm.py`** — Option B. Identical conv front-end, but the
-  uni-directional `LSTM(32)` is replaced with `Bidirectional(LSTM(32))`
-  (64-dim features instead of 32). Valid here specifically because each
-  training instance is a whole, already-segmented character window — this
-  is not streaming/online recognition, so looking "backwards" in time
-  within one instance isn't leakage.
-- **`models/tcn.py`** — Option C. Four dilated causal Conv1D residual
-  blocks (dilations 1/2/4/8) → `GlobalAveragePooling1D`, implemented
-  directly (no new dependency) rather than pulling in an external TCN
-  package, per the ActionPlan's "don't add a component before an
-  experiment justifies it" rule.
-- **`models/__init__.py`** — the `ARCH_BUILDERS` registry. `train.py` /
-  `evaluate.py` select an architecture **by name only** (`--arch`); none
-  of them branch on architecture internals. This is also the seam
-  Priority 5's adapter will plug into later, whichever architecture wins.
-- **`config.py`** — new per-architecture path helpers
-  (`model_path(arch)`, `arch_metrics_path(arch)`, etc.). **Backward
-  compatible by construction:** `arch="cnn_lstm"` resolves to the exact
-  same paths Priority 0 already used (`BASELINE_MODEL_PATH`,
-  `METRICS_PATH`, ...), so an already-trained baseline is untouched and
-  does not need to be retrained. `cnn_bilstm` and `tcn` each get their own
-  clean subdirectory under `models/artifacts/<arch>/` and their own
-  `experiments/<arch>_*.json` files — training one architecture can never
-  overwrite another.
-- **`train.py`** (updated) — now takes `--arch {cnn_lstm,cnn_bilstm,tcn}`
-  (default `cnn_lstm`, i.e. identical behavior to Priority 0 if you don't
-  pass `--arch`). Also now records parameter count and encoder feature
-  dimension in the saved training history, since both matter for the
-  Priority 1 selection rule.
-- **`evaluate.py`** (updated) — same `--arch` flag. Also now records model
-  size on disk, parameter count, and the worst-5-classes-by-F1 in
-  `experiments/<arch>_metrics.json` — ActionPlan.md 9.3's selection rule
-  needs macro F1 *and* robustness *and* latency *and* model size in one
-  place, not scattered across separate runs.
-- **`compare_architectures.py`** (new) — reads whichever
-  `experiments/<arch>_metrics.json` files already exist and renders the
-  ActionPlan.md §9.2 comparison table (also saved to
-  `experiments/architecture_comparison.md`). Doesn't train or evaluate
-  anything itself; safe to re-run any time to check progress, even with
-  only 1 or 2 of the 3 architectures done so far.
-
-### How to pick the winner and move on to Priority 2
-
-`compare_architectures.py` prints a "highest Macro F1" line but
-deliberately does **not** auto-select for you — per ActionPlan.md 9.3, use
-the table to walk the actual rule in order (Macro F1 → robustness on weak
-classes → latency → model size → implementation complexity), pick the
-architecture, and from then on just always pass `--arch <winner>` to every
-later script (this repo does not currently auto-detect "the chosen
-architecture" — that plumbing is a natural first step of Priority 2/3 once
-you've decided).
-
----
-
-## Priority 3 + 4 (dictionary slice) — beam decoding, dictionary correction, weight tuning
-
-ActionPlan.md §11–12 calls for a beam decoder over per-position character
-probabilities (never argmax'd away, per Priority 2), corrected against a
-real dictionary/frequency signal rather than the raw beam text — and for
-the score weights and confidence threshold to be tuned on data, not
-hand-picked. All of that is implemented and evaluated here.
-
-### What's implemented (Priority 3 + 4)
-
-- **`inference/beam_search.py`** — pure per-position beam search over the
-  52-class probability vectors Priority 2 already returns. Log-domain
-  scoring, `beam_width` configurable, `beam_width=1` reproduces greedy
-  decoding exactly (used as the sanity-check baseline in the ablation
-  below).
-- **`inference/word_decoder.py`** — `WordDecoder`, which runs beam search
-  and then corrects each beam candidate against a real vocabulary
-  (`language/wordfreq_scorer.py`'s `is_known_word` / `frequency_score`,
-  falling back to `language/edit_distance.py`'s BK-tree fuzzy match).
-  Deliberately split into `decode_raw()` (the expensive, weight-independent
-  half: beam search + BK-tree lookup) and `score_raw_candidates()` (the
-  cheap, weight-dependent half: a weighted sum + sort) — this is what lets
-  the weight-tuning grid search below run in seconds instead of hours, since
-  beam search and BK-tree lookups happen exactly once per word, never once
-  per weight combination.
-- **`language/wordfreq_scorer.py`** + **`language/edit_distance.py`** —
-  the dictionary/frequency signal, sourced from the `wordfreq` package (no
-  hand-maintained `dictionary.txt`), plus a BK-tree index over a 50k-word
-  vocabulary for fast fuzzy correction at any edit distance.
-- **`app/session.py`** + **`app/correction.py`** + the `/session/*`
-  endpoints in **`app/main.py`** — the v1 commit-button word-boundary
-  design (see `FuturePlan.md` §0–§1 for why a button, not an automatic
-  timing heuristic, was the correct first version): each character stroke
-  is displayed live via `POST /session/{id}/stroke`, and an explicit
-  `POST /session/{id}/commit` finalizes the in-progress word through the
-  decoder above.
-- **`experiments/tune_decoder_weights.py`** — grid-searches `ScoreWeights`
-  (`alpha`/`beta`/`gamma`, weighting sensor/beam score vs. edit-distance
-  similarity vs. word frequency) and a confidence threshold `tau_word`,
-  tuned on the VAL split only, with a single confirmatory run on TEST at
-  the end. Automatically sweeps a range of `alpha_min` floors and selects
-  whichever floor gives the best pooled VAL accuracy — no hand-picked
-  constraint (see `FuturePlan.md` §6.5/§6.7 for why this mattered: an
-  earlier hand-picked `alpha >= 0.5` floor was silently costing ~7.5
-  percentage points of word accuracy). `tau_word` is derived from the same
-  confidence value `app/correction.py` actually compares it against, with
-  a fallback ladder (90% → 70% precision targets) instead of a threshold
-  that can silently degenerate to "never confident" or "always confident."
-- **`experiments/evaluate_decoder.py`** — the canonical A/B/C/D ablation
-  (greedy vs. beam search, with vs. without dictionary correction) on a
-  fixed synthetic TEST word set, isolating exactly what beam search
-  contributes versus what dictionary correction contributes.
-- **`test_beam_dictionary.py`** — standalone smoke tests for beam search +
-  dictionary correction, including one test that runs the real trained TCN
-  end to end on synthetic words.
-
-### Current tuned results (n=2000 words/seed, `--workers 4`)
-
-Tuned weights (`experiments/decoder_weights.json`):
-`alpha=0.05, beta=0.85, gamma=0.10`, `tau_word=0.562` (achieves 80.1%
-precision on the confidence-gated subset of VAL words — a real, checked
-threshold, not a default).
-
-| Config | Beam search | Dictionary correction | TEST word accuracy | 95% CI |
-|---|---|---|---:|---|
-| A. Greedy, no dictionary | No | No | 28.30% | [26.37%, 30.31%] |
-| B. Beam search only | Yes | No | 28.30% | [26.37%, 30.31%] |
-| C. Dictionary correction only | No | Yes | 69.15% | [67.09%, 71.14%] |
-| D. Beam search + dictionary correction | Yes | Yes | 76.85% | [74.95%, 78.65%] |
-
-`B == A` exactly is expected, not a bug — see `FuturePlan.md` §6.2 for the
-proof (given the current position-independent beam scoring, beam search's
-#1 output is mathematically guaranteed to equal greedy's #1 output; beam
-search's real contribution is generating alternate candidates #2–#5 for
-the dictionary stage to consider). See `FuturePlan.md` §6 for the full
-error-category breakdown and what it implies about where to invest next
-(short version: the sensor recognizer, not the decoder, is now the
-bottleneck).
-
-**Reminder (carried through everywhere this is discussed):** these numbers
-come from SYNTHETIC words built by concatenating isolated-character test
-samples (`ActionPlan.md` §4.3), not real continuous air-writing — treat
-them as a pipeline validation, not a claim about real usage.
-
----
-
-## Running it on your real data
-
-Run these from the repo root, in order. Priority 1 commands are additive —
-if you already ran the Priority 0 commands and have a trained baseline,
-you do **not** need to redo steps 1–3.
-
-```bash
-# 0. Setup (once)
-cd wordpredict
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1        # Windows PowerShell
-# source .venv/bin/activate         # macOS/Linux, use this instead
-pip install -r requirements.txt
-
-# 1. (Optional but recommended) audit raw label quality once, fast
-python -m data.audit_raw_labels --raw-root "D:\BTP_Marker_Project\IMU_WordPredict_BTP\Dataset"
-
-# 2. Build the processed dataset (train/val/test .npz + frozen split)
-python -m data.build_dataset --raw-root "D:\BTP_Marker_Project\IMU_WordPredict_BTP\Dataset"
-# add --resample to try the timestamp-aware resampling ablation (§4.4/§19.5)
-
-# --- Priority 0: baseline CNN-LSTM (same as before, --arch defaults to cnn_lstm) ---
-python train.py --arch cnn_lstm
-python evaluate.py --arch cnn_lstm
-#   -> experiments/baseline_metrics.json
-#   -> experiments/baseline_confusion_matrix.csv
-
-# --- Priority 1: the other two architectures ---
-python train.py --arch cnn_bilstm
-python evaluate.py --arch cnn_bilstm
-#   -> experiments/cnn_bilstm_metrics.json
-#   -> experiments/cnn_bilstm_confusion_matrix.csv
-
-python train.py --arch tcn
-python evaluate.py --arch tcn
-#   -> experiments/tcn_metrics.json
-#   -> experiments/tcn_confusion_matrix.csv
-
-# --- Priority 1: side-by-side comparison table ---
-python compare_architectures.py
-#   -> prints the table, also saves experiments/architecture_comparison.md
-#   -> safe to re-run any time, even with only 1-2 architectures done
-
-# Optional: tune epochs/batch size/LR for any architecture, same flags as before
-python train.py --arch cnn_bilstm --epochs 60 --batch-size 64 --lr 0.001
-
-# --- Priority 3 + 4: smoke-test beam search + dictionary correction ---
-python test_beam_dictionary.py
-
-# --- Priority 3 + 4: tune decoder weights (VAL only; sweeps alpha_min ---
-# --- floors automatically and picks the best; one confirmatory TEST run) ---
-python -m experiments.tune_decoder_weights --n-words 2000 --workers 4
-#   -> experiments/decoder_weights.json
-python test_beam_dictionary.py    # rerun -- now picks up the tuned weights automatically
-
-# --- Priority 3 + 4: canonical A/B/C/D decoder ablation on TEST ---
-python -m experiments.evaluate_decoder --n-words 2000 --workers 4 --n-errors 30
-#   -> experiments/decoder_evaluation.json / decoder_evaluation.txt
-
-# --- Serve predictions ---
-uvicorn app.main:app --reload
-# Stateless single-character:
-#   POST /predict {"sensor": [[ax,ay,az,gx,gy,gz,mx,my,mz], ...]}
-# Full commit-button word flow (see app/session.py, FuturePlan.md §0-1):
-#   POST /session/start
-#   POST /session/{session_id}/stroke   {"sensor": [[...]]}   # per character
-#   POST /session/{session_id}/commit                          # finalize word
-#   POST /session/{session_id}/end                              # end session
+```
+IMU marker (accel + gyro + mag, 9 channels)
+        ↓
+Preprocessing (clean → pad/trim → normalize)
+        ↓
+TCN character model  →  52-class probability vector (never argmax'd early)
+        ↓
+Beam search  →  multiple word hypotheses kept alive at once
+        ↓
+Dictionary + n-gram language model correction
+        ↓
+Corrected word  →  optional per-user personalization
 ```
 
-## Deliberately not done yet
+This repo contains the **full working system**: the ML pipeline (data cleaning → TCN → beam search → dictionary/LM correction → session-scoped personalization), a Python inference API, a Node.js realtime gateway, a browser UI, and a hardware bridge for a real IMU marker device. Every claim below is either something you can run yourself or is explicitly marked as not-yet-implemented — see [Project status](#project-status).
 
-Per your own ActionPlan, later priorities depend on this one being solid
-first, and you said not to do everything in one go — so Priority 2's
-argmax-removal work is already done (the model has always returned the
-full probability vector, never argmax, see `inference/realtime.py`), but
-the beam decoder (Priority 3), n-gram/dictionary language scoring
-(Priority 4), and the personalization adapter (Priority 5) are **not** in
-this codebase yet. The `models/__init__.py` registry and the
-encoder/classifier split (present in all three Priority 1 architectures)
-exist specifically so those can be added incrementally without touching
-what's here — pick your Priority 1 winner, wire it into
-`inference/realtime.py`, and Priority 3 is the natural next step.
+---
 
-## For GitHub — suggested top-level README additions once this is public
+## Table of Contents
 
-If/when this goes on GitHub, consider adding (not included here since they
-depend on things outside this codebase, e.g. your actual results and repo
-URL):
+- [What this actually does](#what-this-actually-does)
+- [Repository layout](#repository-layout)
+- [Prerequisites](#prerequisites)
+- [1. Install](#1-install)
+- [2. Get a trained model](#2-get-a-trained-model)
+- [3. Run the servers](#3-run-the-servers)
+- [4. Use the UI](#4-use-the-ui)
+- [5. Connect real hardware (optional)](#5-connect-real-hardware-optional)
+- [Running the ML pipeline from scratch](#running-the-ml-pipeline-from-scratch)
+- [API reference](#api-reference)
+- [Results](#results)
+- [Project status](#project-status)
+- [Further reading](#further-reading)
+- [License](#license)
 
-- A results table pasted from `experiments/architecture_comparison.md`
-  once you've actually run all three architectures on the real dataset,
-  so a visitor sees real numbers without cloning and running anything.
-- A `LICENSE` file and a one-line badge row (build status / license) at
-  the very top.
-- A short "Project status" line stating which Priority (0–6) is currently
-  active, since ActionPlan.md's own philosophy is incremental,
-  one-priority-at-a-time delivery — a visitor shouldn't have to read the
-  whole ActionPlan to know where things stand.
-- A `CONTRIBUTING.md` only if you expect others besides you to submit
-  changes; skip it otherwise, no need to add process overhead for a
-  single-author BTP.
+---
 
-python test_beam_dictionary.py
-python -m experiments.tune_decoder_weights --n-words 800
-python test_beam_dictionary.py    # rerun -- now picks up tuned weights automatically
-python -m experiments.evaluate_decoder --n-words 800 --workers 4 --n-errors 30
+## What this actually does
+
+A person writes a letter in the air with a pen-shaped marker containing a 9-axis motion sensor (accelerometer + gyroscope + magnetometer, sampled ~50 Hz). A **Temporal Convolutional Network (TCN)** looks at that motion burst and outputs a confidence score for all 52 possible characters (`A`–`Z`, `a`–`z`) — it never collapses early to a single best guess. A **beam search** decoder explores several plausible letter sequences at once, and a **dictionary + character n-gram language model** nudges each sequence toward the closest real, common English word. The corrected word is shown to the user, who can accept or correct it — and either way that becomes a signal a small **per-user adapter** can learn from, personalizing recognition to that person's handwriting style without ever touching the shared model.
+
+The system works with **three interchangeable input sources**, so you can develop and demo the whole pipeline without hardware:
+
+| Source | What it is |
+|---|---|
+| **Demo** | Synthetic random sensor data — quick UI/pipeline smoke test |
+| **Training Sample** | Paste the raw contents of any dataset `.txt` file straight into the UI — exercises the exact same pipeline a real stroke would, using real recorded motion data |
+| **Marker** | A real IMU marker, streamed live over serial through the included hardware bridge |
+
+All three feed into the identical prediction path — nothing about the model, decoder, or backend cares which one is active.
+
+---
+
+## Repository layout
+
+```
+config.py                   Every shared constant/path: label mapping, length filters, model paths
+preprocessing/               Raw file loading, cleaning, padding/normalization (shared train+inference)
+data/                        Dataset build script, raw-label audit tool
+models/                      cnn_lstm.py / cnn_bilstm.py / tcn.py — the three compared architectures
+train.py / evaluate.py       Train + evaluate any architecture
+compare_architectures.py     Side-by-side architecture comparison table
+
+inference/
+  realtime.py                 CharacterRecognizer — loads model once, predicts per stroke
+  beam_search.py               Beam search over per-position probabilities
+  word_decoder.py              Beam search + dictionary + n-gram scoring → final word
+
+language/                     wordfreq-backed dictionary, edit-distance/BK-tree, n-gram LM
+personalization/              Session-scoped residual adapter (identity-at-init, safety-gated)
+experiments/                  Decoder weight tuning, full A–E ablation, n-gram training
+
+app/                          FastAPI inference server (Python) — /predict, /session/*, /model/info
+hardware/
+  marker_bridge.py             Serial → local WebSocket adapter for a real marker (no ML inside)
+
+backend/                      Node.js realtime gateway (REST + WebSocket) in front of the Python API
+frontend/                     Browser UI — sensor source selector, live capture view, word flow
+
+ActionPlan.md                 Full original design document (why every component exists)
+FuturePlan.md                 Word/character-boundary future work + decoder ablation deep-dive
+REALTIME_SYSTEM.md            Node/WebSocket protocol reference
+CHANGES.md                    Hardware bridge + training-sample mode + UI redesign changelog
+```
+
+---
+
+## Prerequisites
+
+- **Python 3.11** (TensorFlow CPU build; a CUDA GPU build works too if you have one)
+- **Node.js 18+**
+- A real IMU marker is **not required** — Demo and Training Sample modes work with zero hardware.
+- If you do have a marker: `pyserial` (see [Section 5](#5-connect-real-hardware-optional))
+
+---
+
+## 1. Install
+
+```bash
+git clone <this-repo-url>
+cd wordpredict
+
+# --- Python side ---
+python3.11 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# --- Node side ---
+cd backend
+npm install
+cd ..
+```
+
+## 2. Get a trained model
+
+You have two options:
+
+**A. Bring your own trained model** — if you've already run the pipeline (see [Running the ML pipeline from scratch](#running-the-ml-pipeline-from-scratch)), you should have `models/artifacts/tcn/tcn.keras` and `data/processed/norm_stats.json`. Skip to Section 3.
+
+**B. Train it yourself** — this repo does not ship a pretrained model or the raw dataset (both are large binary artifacts unsuited to a git repo). Point `data/build_dataset.py` at your copy of the [IMU handwritten-alphabet dataset](https://dx.doi.org/10.21227/av6q-jj17) and follow [Running the ML pipeline from scratch](#running-the-ml-pipeline-from-scratch). Expect roughly an hour end-to-end on a normal laptop CPU (dataset build is the slow part; TCN training itself is under 10 minutes once the `.npz` files exist).
+
+## 3. Run the servers
+
+Two processes, in two terminals, both from the repo root:
+
+```bash
+# Terminal 1 — Python inference API (loads the model once at startup)
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+# Terminal 2 — Node.js realtime gateway (serves the API + the browser UI)
+cd backend
+npm start
+```
+
+Open **http://localhost:4000** in a browser. Swagger/OpenAPI docs for the Node gateway are at `http://localhost:4000/api-docs`; the raw Python API docs are at `http://localhost:8000/docs`.
+
+## 4. Use the UI
+
+1. Click **Start Session**.
+2. Pick a **Sensor Source**:
+   - **Demo** — click "Simulate 40-Sample Stroke" a couple of times.
+   - **Training Sample** — paste the raw contents of a dataset file (e.g. `Dataset/capital letters/A/S01/A-01.txt`) into the textarea and click **Load Sample**. If the file has a consistent label column, it's shown as a "ground truth" comparison after prediction — it is never sent to the model.
+   - **Marker** — see [Section 5](#5-connect-real-hardware-optional) first.
+3. Watch the sample counter, sparklines, and captured-row table update live.
+4. Click **Predict Character**. The predicted letter is appended to the current word.
+5. Repeat for each letter of the word.
+6. Click **Predict Word** to run beam search + dictionary/language-model correction and see the final corrected word.
+
+## 5. Connect real hardware (optional)
+
+The physical marker firmware streams raw sensor lines over serial (USB) or BLE. A small, ML-free bridge script (`hardware/marker_bridge.py`) reads that stream, parses it into the same 9-value rows the model expects, and broadcasts them over a local WebSocket for the browser to pick up directly — it never talks to the model or the Python/Node servers itself.
+
+```bash
+pip install -r hardware/requirements.txt
+python -m hardware.marker_bridge --serial-port COM5 --baud 115200
+# macOS/Linux: --serial-port /dev/ttyUSB0
+```
+
+In the UI, select **Marker** as the sensor source, confirm the bridge URL (`ws://localhost:8765` by default), and click **Connect to Bridge**. Write a character — the sample counter and sparklines should update in real time — then click **Predict Character** exactly as with the other two sources.
+
+> The bridge intentionally does **not** auto-trigger prediction when you release the marker's physical writing button. Word/character boundaries are explicit UI actions in this system (see [`FuturePlan.md`](FuturePlan.md) for why, and what an automatic version would need). The writing-flag button state is still forwarded as optional display metadata.
+
+If your firmware's live serial format differs from the recorded dataset's `.txt` schema, only `RowParser.parse_line()` inside `hardware/marker_bridge.py` needs to change — nothing downstream does.
+
+---
+
+## Running the ML pipeline from scratch
+
+Only needed if you're training your own model rather than using an existing one. Run from the repo root, in order:
+
+```bash
+# 0. (Optional) audit raw label quality across the whole dataset, fast
+python -m data.audit_raw_labels --raw-root "/path/to/Dataset"
+
+# 1. Build the processed dataset (train/val/test .npz + frozen participant split)
+python -m data.build_dataset --raw-root "/path/to/Dataset"
+
+# 2. Train + evaluate each architecture
+python train.py --arch cnn_lstm   && python evaluate.py --arch cnn_lstm
+python train.py --arch cnn_bilstm && python evaluate.py --arch cnn_bilstm
+python train.py --arch tcn        && python evaluate.py --arch tcn
+
+# 3. Compare them side by side
+python compare_architectures.py
+#   -> experiments/architecture_comparison.md
+
+# 4. Train the character n-gram language model (external text, not the IMU data)
 python -m experiments.build_ngram_model
-python -m experiments.tune_decoder_weights --n-words 800 --workers 4
-python test_beam_dictionary.py
 
-python -m experiments.evaluate_decoder --n-words 2000 --workers 4  --beam-width-sweep-widths 5,10,15,20 --beam-width-sweep-words 2000
-python .\smoke_test_personalization.py
-uvicorn app.main:app --reload
+# 5. Tune the decoder's weights (dictionary/frequency/LM blend) on held-out data
+python -m experiments.tune_decoder_weights --n-words 2000 --workers 4
+#   -> experiments/decoder_weights.json
+
+# 6. Run the full decoder ablation (what beam search vs. dictionary vs. LM each contribute)
+python -m experiments.evaluate_decoder --n-words 2000 --workers 4
+#   -> experiments/decoder_evaluation.json / .txt
+
+# Sanity checks, runnable any time:
+python test_beam_dictionary.py
+python smoke_test_personalization.py
+```
+
+Every one of these steps writes real, inspectable output (metrics JSON, confusion matrices, a dataset manifest) rather than silently overwriting anything — see [`ActionPlan.md`](ActionPlan.md) for the full design rationale behind each stage, and [`FuturePlan.md`](FuturePlan.md) §6 for the decoder ablation's detailed findings.
+
+---
+
+## API reference
+
+### Python inference API (`localhost:8000`)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Model-loaded status |
+| `GET /model/info` | Serving architecture, decoder weights, valid stroke-length band, LM availability |
+| `POST /predict` | Stateless single-character prediction from raw sensor rows |
+| `POST /session/start` | Create a session |
+| `POST /session/{id}/stroke` | **Predict Character** — treats accumulated rows as one character |
+| `POST /session/{id}/commit` | **Predict Word** — beam search + dictionary/LM correction |
+| `POST /session/{id}/end` | End session, return accumulated text |
+| `POST /session/{id}/correct-character` | Personalization: explicit user correction |
+| `POST /session/{id}/personalized-predict` | Predict using that session's personalized adapter |
+
+Full interactive docs: `http://localhost:8000/docs`.
+
+### Node.js gateway (`localhost:4000`)
+
+REST endpoints under `/api/*` mirror the Python API (session lifecycle, character prediction, word commit, pipeline/model status). A WebSocket at `/ws` provides the same functionality for continuous streaming — see [`REALTIME_SYSTEM.md`](REALTIME_SYSTEM.md) for the full message protocol and example sequences. Swagger UI: `http://localhost:4000/api-docs`.
+
+---
+
+## Results
+
+Three sensor architectures were trained and compared under identical conditions (same participant-disjoint split, same preprocessing, same training budget):
+
+| Model | Macro F1 | Accuracy | Latency (ms/sample) | Params |
+|---|---:|---:|---:|---:|
+| CNN-LSTM (baseline) | 74.37% | 74.61% | 385.6 | 210,100 |
+| CNN-BiLSTM | 75.40% | 75.56% | 760.5 | 255,284 |
+| **TCN (selected)** | **78.30%** | **78.39%** | **45.2** | **145,140** |
+
+TCN won on every axis at once — highest accuracy, lowest latency, smallest model — and became the model used everywhere downstream.
+
+Full decoder ablation (synthetic test words, isolating what each pipeline stage contributes):
+
+| Configuration | Word Accuracy |
+|---|---:|
+| Greedy character predictions, no correction | 39.0% |
+| + Beam search only | 39.0% *(expected — see explanation below)* |
+| + Dictionary correction only | 77.6% |
+| + Beam search + dictionary | 85.4% |
+| + Beam search + dictionary + n-gram LM | 85.9% |
+
+Beam search alone changing nothing (39.0% → 39.0%) looks like a bug but isn't — it's a proven mathematical consequence of the current scoring design, explained in detail in [`FuturePlan.md`](FuturePlan.md) §6. Dictionary correction is the single largest jump in the whole table.
+
+---
+
+## Project status
+
+**Implemented, trained, and measured:**
+- Full preprocessing pipeline, identical at training and inference time
+- All three sensor architectures, compared under identical conditions
+- Full-probability-vector output (no internal argmax)
+- Beam search + dictionary + n-gram language model correction, weights tuned on held-out data
+- A real FastAPI inference server and Node.js realtime gateway
+- Session-scoped personalization adapter with a mathematically verified identity-at-init guarantee and safety/rollback gate
+- Three interchangeable sensor input sources (Demo / Training Sample / Marker) sharing one prediction pipeline
+- Stroke length-band validation at the API boundary (rejects out-of-distribution input with a clear error instead of a silently wrong prediction)
+
+**Designed but not yet built** (see [`FuturePlan.md`](FuturePlan.md) for the full writeup):
+- Automatic word-boundary detection (currently an explicit "Predict Word" action; pause-based auto-detection is scoped but needs a small real-timing data pilot first)
+- Fully continuous, button-free character segmentation
+- Persistent (cross-session) per-user adapters — currently forgotten when a session ends
+- Decoder-confidence-derived pseudo-labels for personalization (only explicit user correction is wired in)
+
+---
+

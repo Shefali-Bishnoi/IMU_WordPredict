@@ -101,3 +101,5 @@ data/**/__pycache__/
 *.temp
 *.bak
 *.swp
+
+node_modules/

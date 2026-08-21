@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WordPredict — Realtime Console</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <span class="brand">WORDPREDICT</span>
+      <span class="brand-sub">realtime console</span>
+    </div>
+    <div class="status-row">
+      <span id="chip-backend" class="status-chip off"><span class="dot dot-red"></span>Backend</span>
+      <span id="chip-marker" class="status-chip off"><span class="dot dot-gray"></span>Marker</span>
+      <span id="chip-session" class="status-chip off"><span class="dot dot-gray"></span>Session: idle</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================== LEFT COLUMN ===================== -->
+
+    <section class="panel">
+      <h2>Session</h2>
+      <p class="panel-sub">Start a session, then write characters using any sensor source below.</p>
+      <div class="row">
+        <button id="btn-start" class="primary">Start Session</button>
+        <button id="btn-reset">Reset</button>
+        <button id="btn-stop" class="danger">Stop</button>
+      </div>
+      <div class="meta-row">
+        <div class="metric"><span class="metric-label">Session ID</span><span class="metric-value" id="meta-session">—</span></div>
+        <div class="metric"><span class="metric-label">State</span><span class="metric-value" id="meta-state">IDLE</span></div>
+        <div class="metric"><span class="metric-label">Words so far</span><span class="metric-value" id="meta-text-so-far">—</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Sensor Source</h2>
+      <p class="panel-sub">All three sources feed the exact same prediction pipeline.</p>
+      <div class="source-pills">
+        <label class="source-pill" data-src="demo">
+          <input type="radio" name="source" value="demo" checked /> Demo
+        </label>
+        <label class="source-pill" data-src="training">
+          <input type="radio" name="source" value="training" /> Training Sample
+        </label>
+        <label class="source-pill" data-src="marker">
+          <input type="radio" name="source" value="marker" /> Marker
+        </label>
+      </div>
+
+      <!-- Demo panel -->
+      <div class="source-panel" id="panel-demo">
+        <p class="hint">Generates synthetic rows for quick UI testing (no hardware, no real training data).</p>
+        <div class="row">
+          <button id="btn-sim-sample">Simulate 1 Sample</button>
+          <button id="btn-sim-burst">Simulate 40-Sample Stroke</button>
+        </div>
+      </div>
+
+      <!-- Training sample panel -->
+      <div class="source-panel" id="panel-training">
+        <p class="hint">
+          Paste the raw contents of an existing training <code>.txt</code> file
+          (e.g. <code>Dataset/capital letters/A/S01/A-01.txt</code>). Only the 9 sensor
+          columns are extracted and fed to the model — any label present is shown
+          as ground truth for comparison only, never sent to the model.
+        </p>
+        <label class="field-label">Paste raw .txt contents</label>
+        <textarea id="training-textarea" placeholder="A,2022-10-18 14:55:03.680216,0.03,-0.50,0.85,2.87,-41.63,5.49,-2.01,6.21,-110.12,1&#10;A,2022-10-18 14:55:03.698087,-0.04,-0.58,0.85,5.07,-34.97,2.99,-2.01,6.21,-110.12,1&#10;..."></textarea>
+        <div class="row">
+          <button id="btn-load-sample" class="primary">Load Sample</button>
+          <button id="btn-clear-training" class="ghost">Clear</button>
+        </div>
+        <div id="training-status" class="hint"></div>
+      </div>
+
+      <!-- Marker panel -->
+      <div class="source-panel" id="panel-marker">
+        <p class="hint">
+          Connects to <code>hardware/marker_bridge.py</code>'s local WebSocket
+          server. Run the bridge separately, pointed at your marker's serial port.
+        </p>
+        <label class="field-label">Bridge WebSocket URL</label>
+        <input type="text" id="marker-ws-url" value="ws://localhost:8765" />
+        <div class="row">
+          <button id="btn-marker-connect" class="primary">Connect to Bridge</button>
+          <button id="btn-marker-disconnect" class="ghost">Disconnect</button>
+        </div>
+        <div class="meta-row">
+          <div class="metric"><span class="metric-label">Writing flag</span><span class="metric-value" id="meta-writing-flag">—</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== CAPTURE PANEL (span 2) ===================== -->
+    <section class="panel span-2">
+      <h2>Current Character Capture</h2>
+      <div class="meta-row">
+        <div class="metric"><span class="metric-label">Source</span><span class="metric-value"><span id="badge-source" class="badge badge-demo">Demo</span></span></div>
+        <div class="metric"><span class="metric-label">Samples captured</span><span class="metric-value" id="meta-samples">0</span></div>
+        <div class="metric"><span class="metric-label">Valid length band</span><span class="metric-value" id="meta-band">40–80</span></div>
+        <div class="metric"><span class="metric-label">Approx. rate</span><span class="metric-value" id="meta-rate">—</span></div>
+      </div>
+
+      <div class="sparkline-group">
+        <div class="sparkline-header">
+          <span class="sparkline-title">Accelerometer</span>
+          <span class="sparkline-legend">
+            <span><span class="legend-swatch" style="background:var(--ch-x)"></span>x</span>
+            <span><span class="legend-swatch" style="background:var(--ch-y)"></span>y</span>
+            <span><span class="legend-swatch" style="background:var(--ch-z)"></span>z</span>
+          </span>
+        </div>
+        <canvas class="sparkline" id="spark-accel"></canvas>
+      </div>
+      <div class="sparkline-group">
+        <div class="sparkline-header"><span class="sparkline-title">Gyroscope</span></div>
+        <canvas class="sparkline" id="spark-gyro"></canvas>
+      </div>
+      <div class="sparkline-group">
+        <div class="sparkline-header"><span class="sparkline-title">Magnetometer</span></div>
+        <canvas class="sparkline" id="spark-mag"></canvas>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>ax</th><th>ay</th><th>az</th>
+              <th>gx</th><th>gy</th><th>gz</th>
+              <th>mx</th><th>my</th><th>mz</th>
+            </tr>
+          </thead>
+          <tbody id="sensor-table-body"></tbody>
+        </table>
+      </div>
+
+      <div class="row">
+        <button id="btn-clear-character" class="ghost">Clear Character (local preview)</button>
+        <button id="btn-predict" class="primary">Predict Character</button>
+      </div>
+    </section>
+
+    <!-- ===================== PREDICTION ===================== -->
+    <section class="panel">
+      <h2>Character Prediction</h2>
+      <div class="meta-row">
+        <div class="metric"><span class="metric-label">Predicted</span><span class="metric-value" id="pred-char">—</span></div>
+        <div class="metric"><span class="metric-label">Confidence</span><span class="metric-value" id="pred-conf">—</span></div>
+      </div>
+      <div class="top-k-list" id="topk-list"></div>
+      <div id="ground-truth-panel" class="ground-truth-row" style="display:none;">
+        <span id="ground-truth-text"></span>
+      </div>
+    </section>
+
+    <!-- ===================== WORD BUILDING ===================== -->
+    <section class="panel">
+      <h2>Word In Progress</h2>
+      <div class="char-history" id="char-history"></div>
+      <div class="current-word-raw" id="current-word">—</div>
+      <div class="row">
+        <button id="btn-clear-word" class="ghost">Clear Word</button>
+        <button id="btn-commit" class="primary">Predict Word</button>
+      </div>
+
+      <!-- Result appears directly below the button above, not just in
+           the log -- hidden until the first "Predict Word" click. -->
+      <div class="final-word-panel" id="final-word-section" style="display:none;">
+        <div class="final-word-divider"></div>
+        <h2>Corrected Word</h2>
+        <div class="final-word" id="final-word">—</div>
+        <div class="final-word-raw" id="final-word-raw"></div>
+        <div class="confidence-bar-track"><div class="confidence-bar-fill" id="final-confidence-bar" style="width:0%"></div></div>
+      </div>
+    </section>
+
+    <!-- ===================== PIPELINE / DEBUG ===================== -->
+    <section class="panel">
+      <h2>Prediction Pipeline</h2>
+      <pre class="debug" id="pipeline-diagram">Not available yet — start a session and predict a character.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Debug / Raw Response</h2>
+      <pre class="debug" id="debug-json">Not available</pre>
+    </section>
+
+    <section class="panel span-2">
+      <h2>Log</h2>
+      <pre class="log" id="log"></pre>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

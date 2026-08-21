@@ -4,44 +4,45 @@ Minimal production-ready serving layer.
     uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 POST /predict
-    Stateless single-character prediction -- unchanged.
+    Stateless single-character prediction -- unchanged, PLUS an additive
+    "architecture" field (see PredictResponse) so a frontend can display
+    the real serving architecture without hardcoding it.
 
 Word-boundary (commit-button) endpoints -- see app/session.py and
-app/correction.py for the design rationale. UNCHANGED from before:
+app/correction.py for the design rationale. UNCHANGED contract, with
+ADDITIVE optional score-breakdown fields on CommitWordResponse (see
+below) -- existing clients that only read raw_word/corrected_word/
+confidence/is_low_confidence/text_so_far are unaffected.
 
 POST /session/start
-POST /session/{session_id}/stroke
-POST /session/{session_id}/commit
+POST /session/{session_id}/stroke      <- this IS "Predict Character":
+    everything accumulated in the session's current-word buffer since
+    the last /stroke or /commit call is treated as ONE character
+    instance and predicted. No new endpoint was needed for the
+    Predict-Character UX -- this one already matches it exactly.
+POST /session/{session_id}/commit      <- this IS "Predict Word": runs
+    beam search + dictionary/LM correction over the characters
+    predicted so far and finalizes the word.
 POST /session/{session_id}/end
 
 PERSONALIZATION ADDITIONS (all new, nothing above changed):
 
 POST /session/{session_id}/correct-character
-    body: {"sensor": [[...]], "correct_char": "b"}
-    The user is telling the system: "the stroke I just wrote (same raw
-    sensor data already sent to /stroke) was actually 'b', not what got
-    displayed." This is Level-1 (ActionPlan.md 13.6) -- the highest
-    quality personalization label. On first call for a session, this
-    lazily builds that session's personalized_model + adapter (starts
-    as an exact identity copy of the global model, see
-    personalization/adapter.py). The sample is added to the session's
-    adaptation buffer, and a session-scoped adapter update is attempted,
-    gated by a held-out-accuracy check (personalization/trainer.py) so
-    it can only help or no-op, never regress that session's own recent
-    accuracy.
-    returns: {"updated": bool, "reason"?: str, "baseline_acc"?: float,
-              "candidate_acc"?: float, "n_train"?: int, "n_val"?: int}
-
 POST /session/{session_id}/personalized-predict
-    body: {"sensor": [[...]], "top_k": 5}
-    Same shape as /predict, but runs the session's personalized model
-    if one exists yet (falls back to the identical global-model
-    prediction if personalization hasn't started for this session --
-    see the identity guarantee in personalization/adapter.py). Use this
-    instead of /predict once a session has started correcting
-    characters, if you want predictions to actually reflect the
-    adaptation.
-    returns: same shape as /predict, plus "personalized": bool
+
+GET /model/info  (additive)
+    Returns real, non-hardcoded metadata about the currently serving
+    pipeline.
+
+NEW (length-band enforcement, see inference/realtime.py's
+StrokeLengthError docstring / check.md): /predict, /session/{id}/stroke,
+and /session/{id}/correct-character now catch StrokeLengthError and
+return HTTP 400 with a clear, actionable message instead of either
+crashing with a 500 or (the previous, worse behavior) silently returning
+a confident-looking but meaningless prediction for an out-of-distribution
+stroke length. This matters specifically now that real hardware strokes
+(via hardware/marker_bridge.py) are a live input source, not just
+pre-filtered dataset files.
 
 The model is loaded exactly once at process startup (not per-request).
 CORS is left open here for local development; lock this down to your real
@@ -56,14 +57,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app.correction import correct_word
+from app.correction import _ngram_model, _search_lambda_lm, _tau_word, _weights, correct_word
 from app.session import store as session_store
-from config import label_to_index
-from inference.realtime import CharacterRecognizer
+from config import MAX_RAW_LINES, MIN_RAW_LINES, NUM_CLASSES, label_to_index
+from inference.realtime import CharacterRecognizer, StrokeLengthError
 from personalization.adapter import build_personalized_model
 from personalization.trainer import adapt_session
 
-app = FastAPI(title="WordPredict Inference API", version="0.3.0")
+app = FastAPI(title="WordPredict Inference API", version="0.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -95,7 +96,7 @@ def _require_session(session_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Stateless single-character prediction (unchanged)
+# Stateless single-character prediction (unchanged, + additive field)
 # ---------------------------------------------------------------------------
 class StrokeRequest(BaseModel):
     sensor: List[List[float]] = Field(
@@ -112,6 +113,10 @@ class TopKEntry(BaseModel):
 class PredictResponse(BaseModel):
     probabilities: List[float]
     top_k: List[TopKEntry]
+    # ADDITIVE: CharacterRecognizer.predict() already computes this
+    # internally (see inference/realtime.py); it just wasn't surfaced
+    # over HTTP before. Optional + defaulted so old clients are unaffected.
+    architecture: Optional[str] = None
 
 
 @app.get("/health")
@@ -124,12 +129,15 @@ def predict(req: StrokeRequest) -> PredictResponse:
     recognizer = _require_recognizer()
     if not req.sensor or any(len(row) != 9 for row in req.sensor):
         raise HTTPException(status_code=400, detail="sensor must be rows of 9 values")
-    result = recognizer.predict(req.sensor, top_k=req.top_k)
+    try:
+        result = recognizer.predict(req.sensor, top_k=req.top_k)
+    except StrokeLengthError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return PredictResponse(**result)
 
 
 # ---------------------------------------------------------------------------
-# Session / word-boundary (commit-button) endpoints (unchanged)
+# Session / word-boundary (commit-button) endpoints (unchanged contract)
 # ---------------------------------------------------------------------------
 class StartSessionRequest(BaseModel):
     user_id: Optional[str] = None
@@ -154,12 +162,23 @@ class StrokeInSessionResponse(BaseModel):
 
 @app.post("/session/{session_id}/stroke", response_model=StrokeInSessionResponse)
 def submit_stroke(session_id: str, req: StrokeRequest) -> StrokeInSessionResponse:
+    """This IS "Predict Character": everything in req.sensor is treated
+    as one already-segmented character instance (matching exactly how
+    every training file was collected -- one file, one character). The
+    caller (Node backend / bridge-fed frontend) is responsible for
+    deciding when a character is "done" and calling this -- there is
+    still no automatic character-boundary detection anywhere in this
+    system (FuturePlan.md Sec.0.1)."""
     recognizer = _require_recognizer()
     session = _require_session(session_id)
     if not req.sensor or any(len(row) != 9 for row in req.sensor):
         raise HTTPException(status_code=400, detail="sensor must be rows of 9 values")
 
-    result = recognizer.predict(req.sensor, top_k=req.top_k)
+    try:
+        result = recognizer.predict(req.sensor, top_k=req.top_k)
+    except StrokeLengthError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     top1 = result["top_k"][0]
     session.current_word.append(top1["char"], result["probabilities"])
     session.touch()
@@ -178,10 +197,19 @@ class CommitWordResponse(BaseModel):
     confidence: float
     is_low_confidence: bool
     text_so_far: str
+    # ADDITIVE (from app/correction.py's CorrectionResult, which in turn
+    # comes straight from inference/word_decoder.py's already-computed
+    # Candidate fields -- nothing new is computed, just surfaced).
+    beam_score: Optional[float] = None
+    edit_similarity: Optional[float] = None
+    word_frequency: Optional[float] = None
+    lm_score: Optional[float] = None
 
 
 @app.post("/session/{session_id}/commit", response_model=CommitWordResponse)
 def commit_word(session_id: str) -> CommitWordResponse:
+    """This IS "Predict Word": beam search + dictionary/LM correction
+    over every character predicted since the last commit."""
     session = _require_session(session_id)
     if session.current_word.is_empty():
         raise HTTPException(status_code=400, detail="No characters written since the last commit")
@@ -199,6 +227,10 @@ def commit_word(session_id: str) -> CommitWordResponse:
         confidence=result.confidence,
         is_low_confidence=result.is_low_confidence,
         text_so_far=session.text_so_far,
+        beam_score=result.beam_score,
+        edit_similarity=result.edit_similarity,
+        word_frequency=result.word_frequency,
+        lm_score=result.lm_score,
     )
 
 
@@ -215,7 +247,7 @@ def end_session(session_id: str) -> EndSessionResponse:
 
 
 # ---------------------------------------------------------------------------
-# Personalization endpoints (new)
+# Personalization endpoints (unchanged, + StrokeLengthError -> 400)
 # ---------------------------------------------------------------------------
 class CorrectCharacterRequest(BaseModel):
     sensor: List[List[float]] = Field(
@@ -248,7 +280,10 @@ def correct_character(session_id: str, req: CorrectCharacterRequest) -> CorrectC
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    x = recognizer.preprocess_stroke(req.sensor)
+    try:
+        x = recognizer.preprocess_stroke(req.sensor)
+    except StrokeLengthError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     if session.personalized_model is None:
         session.personalized_model, session.adapter = build_personalized_model(
@@ -278,7 +313,10 @@ def personalized_predict(session_id: str, req: StrokeRequest) -> PersonalizedPre
     if not req.sensor or any(len(row) != 9 for row in req.sensor):
         raise HTTPException(status_code=400, detail="sensor must be rows of 9 values")
 
-    x = recognizer.preprocess_stroke(req.sensor)[np.newaxis, ...]
+    try:
+        x = recognizer.preprocess_stroke(req.sensor)[np.newaxis, ...]
+    except StrokeLengthError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     if session.personalized_model is not None:
         probs = session.personalized_model.predict(x, verbose=0)[0]
@@ -296,3 +334,37 @@ def personalized_predict(session_id: str, req: StrokeRequest) -> PersonalizedPre
         top_k=[TopKEntry(char=index_to_label(int(i)), p=float(probs[i])) for i in top_k_idx],
         personalized=personalized,
     )
+
+
+# ---------------------------------------------------------------------------
+# Model / pipeline metadata (additive) -- what actually exists, nothing
+# invented. Backs the Node backend's /api/model/info and
+# /api/pipeline/status so the frontend never hardcodes "TCN" or guesses
+# whether beam search/dictionary/LM/personalization are wired in.
+# ---------------------------------------------------------------------------
+@app.get("/model/info")
+def model_info() -> dict:
+    recognizer = _require_recognizer()
+    return {
+        "architecture": recognizer.arch,
+        "seq_len": recognizer.seq_len,
+        "num_classes": NUM_CLASSES,
+        "beam_search_available": True,
+        "dictionary_correction_available": True,
+        "ngram_language_model_available": _ngram_model is not None,
+        "ngram_order": _ngram_model.order if _ngram_model is not None else None,
+        "personalization_available": True,
+        "tau_word": _tau_word,
+        "search_lambda_lm": _search_lambda_lm,
+        "decoder_weights": {
+            "alpha": _weights.alpha,
+            "beta": _weights.beta,
+            "gamma": _weights.gamma,
+            "delta": _weights.delta,
+        },
+        # ADDITIVE: lets a frontend show the valid stroke-length band
+        # (e.g. next to the sample counter: "47 / 40-80 rows") instead
+        # of hardcoding it or discovering it only via a 400 error.
+        "min_raw_lines": MIN_RAW_LINES,
+        "max_raw_lines": MAX_RAW_LINES,
+    }

@@ -1,0 +1,5 @@
+# Extra dependencies for hardware/marker_bridge.py only -- NOT needed by
+# the main ML pipeline (requirements.txt) or the Node backend. Install
+# these only on the machine physically connected to the marker.
+pyserial>=3.5
+websockets>=12.0

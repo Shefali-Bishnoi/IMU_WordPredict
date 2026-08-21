@@ -12,6 +12,13 @@ be silently inert at inference (delta would multiply a ScoreWeights.
 lm_score of 0.0, and search_lambda_lm would have no lm_scorer to steer
 with). Older decoder_weights.json files without these keys still load
 fine: ScoreWeights.delta and search_lambda_lm both default to 0.0.
+
+ADDITIVE CHANGE (for the realtime Node/UI layer): CorrectionResult now
+also carries the winning candidate's beam_score / edit_similarity /
+word_frequency / lm_score / final_score / is_known_word. These were
+already computed by WordDecoder.decode() (see inference/word_decoder.py's
+Candidate dataclass) -- they just weren't surfaced past correct_word()
+before. Nothing about the scoring/decoding logic itself changed.
 """
 from __future__ import annotations
 
@@ -72,6 +79,14 @@ class CorrectionResult:
     corrected_word: str
     confidence: float
     is_low_confidence: bool
+    # ADDITIVE: None when no decoding happened at all (empty probabilities
+    # fallback below); otherwise taken from the winning WordDecoder candidate.
+    beam_score: float | None = None
+    edit_similarity: float | None = None
+    word_frequency: float | None = None
+    lm_score: float | None = None
+    final_score: float | None = None
+    is_known_word: bool | None = None
 
 
 def correct_word(characters: list[str], probabilities: list[list[float]]) -> CorrectionResult:
@@ -94,4 +109,10 @@ def correct_word(characters: list[str], probabilities: list[list[float]]) -> Cor
         corrected_word=result["prediction"],
         confidence=confidence,
         is_low_confidence=confidence < _tau_word,
+        beam_score=best.get("beam_score"),
+        edit_similarity=best.get("edit_similarity"),
+        word_frequency=best.get("word_frequency"),
+        lm_score=best.get("lm_score"),
+        final_score=best.get("final_score"),
+        is_known_word=best.get("is_known_word"),
     )
