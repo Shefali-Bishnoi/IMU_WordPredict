@@ -34,6 +34,7 @@
         <div class="metric"><span class="metric-label">Session ID</span><span class="metric-value" id="meta-session">—</span></div>
         <div class="metric"><span class="metric-label">State</span><span class="metric-value" id="meta-state">IDLE</span></div>
         <div class="metric"><span class="metric-label">Words so far</span><span class="metric-value" id="meta-text-so-far">—</span></div>
+        <div class="metric"><span class="metric-label">Contextual LM</span><span class="metric-value" id="meta-lm-status">—</span></div>
       </div>
     </section>
 
@@ -67,7 +68,9 @@
           Paste the raw contents of an existing training <code>.txt</code> file
           (e.g. <code>Dataset/capital letters/A/S01/A-01.txt</code>). Only the 9 sensor
           columns are extracted and fed to the model — any label present is shown
-          as ground truth for comparison only, never sent to the model.
+          as ground truth for comparison only, never sent to the model. This is the
+          full path used to test the entire pipeline — including contextual
+          correction — before real hardware is available.
         </p>
         <label class="field-label">Paste raw .txt contents</label>
         <textarea id="training-textarea" placeholder="A,2022-10-18 14:55:03.680216,0.03,-0.50,0.85,2.87,-41.63,5.49,-2.01,6.21,-110.12,1&#10;A,2022-10-18 14:55:03.698087,-0.04,-0.58,0.85,5.07,-34.97,2.99,-2.01,6.21,-110.12,1&#10;..."></textarea>
@@ -145,9 +148,9 @@
       </div>
     </section>
 
-    <!-- ===================== PREDICTION ===================== -->
+    <!-- ===================== PREDICTION (LIVE CHARACTER) ===================== -->
     <section class="panel">
-      <h2>Character Prediction</h2>
+      <h2>Live Character</h2>
       <div class="meta-row">
         <div class="metric"><span class="metric-label">Predicted</span><span class="metric-value" id="pred-char">—</span></div>
         <div class="metric"><span class="metric-label">Confidence</span><span class="metric-value" id="pred-conf">—</span></div>
@@ -158,24 +161,52 @@
       </div>
     </section>
 
-    <!-- ===================== WORD BUILDING ===================== -->
+    <!-- ===================== WORD BUILDING (CURRENT WORD) ===================== -->
     <section class="panel">
-      <h2>Word In Progress</h2>
+      <h2>Current Word</h2>
       <div class="char-history" id="char-history"></div>
       <div class="current-word-raw" id="current-word">—</div>
       <div class="row">
         <button id="btn-clear-word" class="ghost">Clear Word</button>
-        <button id="btn-commit" class="primary">Predict Word</button>
+        <button id="btn-commit" class="primary">Commit Word</button>
       </div>
 
       <!-- Result appears directly below the button above, not just in
-           the log -- hidden until the first "Predict Word" click. -->
+           the log -- hidden until the first "Commit Word" click. -->
       <div class="final-word-panel" id="final-word-section" style="display:none;">
         <div class="final-word-divider"></div>
         <h2>Corrected Word</h2>
         <div class="final-word" id="final-word">—</div>
         <div class="final-word-raw" id="final-word-raw"></div>
         <div class="confidence-bar-track"><div class="confidence-bar-fill" id="final-confidence-bar" style="width:0%"></div></div>
+      </div>
+    </section>
+
+    <!-- ===================== TEXT / SENTENCE BUFFER (span 2) ===================== -->
+    <!-- No "Commit Sentence" control anywhere here or elsewhere in this
+         UI -- the buffer below grows one word at a time, purely as a
+         side effect of "Commit Word" above. -->
+    <section class="panel span-2">
+      <h2>Text Buffer</h2>
+      <p class="panel-sub">Accumulated committed words. There is no separate "commit sentence" step — this updates after every committed word.</p>
+      <div class="text-buffer" id="text-buffer">—</div>
+    </section>
+
+    <!-- ===================== CONTEXTUAL CORRECTION (span 2) ===================== -->
+    <section class="panel span-2">
+      <h2>Contextual Correction</h2>
+      <p class="panel-sub">
+        A pretrained causal language model scores the word decoder's own top
+        candidates against the preceding text — it never invents a word the
+        decoder didn't already propose, and it only runs once per committed
+        word (not per character).
+      </p>
+      <div id="contextual-panel" class="contextual-panel inactive">
+        <div class="meta-row">
+          <div class="metric"><span class="metric-label">Context</span><span class="metric-value" id="contextual-context">—</span></div>
+        </div>
+        <div class="hint" id="contextual-status">Not available yet — commit a word first.</div>
+        <div class="contextual-candidates" id="contextual-candidates"></div>
       </div>
     </section>
 

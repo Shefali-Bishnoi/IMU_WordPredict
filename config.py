@@ -206,3 +206,42 @@ def arch_training_history_path(arch: str) -> Path:
 
 
 ARCHITECTURE_COMPARISON_PATH = EXPERIMENTS_DIR / "architecture_comparison.md"
+import os
+
+# Master on/off switch. When false, the entire contextual-correction
+# layer is skipped and the pipeline behaves EXACTLY as it did before
+# this feature existed (word-level dictionary/personalization result is
+# what gets committed to the text buffer, unchanged).
+LANGUAGE_MODEL_ENABLED = os.environ.get("LANGUAGE_MODEL_ENABLED", "true").lower() in ("1", "true", "yes")
+
+# Any causal (left-to-right) HF model works. distilgpt2 is the default
+# because it's small (~82M params, ~330MB), downloads quickly, and runs
+# fine on CPU -- appropriate for local/pre-production use per the
+# "don't hard-code an unnecessarily huge model" requirement. Swap to
+# "gpt2", "gpt2-medium", or any other causal LM via the env var without
+# touching application code.
+LANGUAGE_MODEL_NAME = os.environ.get("LANGUAGE_MODEL_NAME", "distilgpt2")
+
+# Weight of the language-model term in the final combined score (see
+# language/contextual_scorer.py). Deliberately conservative by default
+# -- the sensor/dictionary/personalization pipeline is the reliable,
+# measured system (ActionPlan.md's real accuracy numbers); the LM is a
+# contextual nudge, not the primary decision-maker.
+LANGUAGE_MODEL_WEIGHT = float(os.environ.get("LANGUAGE_MODEL_WEIGHT", "0.15"))
+
+# How many of the most recently COMMITTED words are sent to the LM as
+# context for scoring the next word. Keeps latency/token-count bounded
+# regardless of how long a session's text buffer grows.
+LANGUAGE_CONTEXT_WORDS = int(os.environ.get("LANGUAGE_CONTEXT_WORDS", "20"))
+
+# Hard ceiling on tokens fed to the LM per scoring call (context + all
+# candidates), independent of LANGUAGE_CONTEXT_WORDS -- protects against
+# unusually long words/context blowing past the model's own context
+# limit (distilgpt2/gpt2 support 1024 tokens; this stays well under that).
+LANGUAGE_MODEL_MAX_CONTEXT_TOKENS = int(os.environ.get("LANGUAGE_MODEL_MAX_CONTEXT_TOKENS", "256"))
+
+# How many top decoder candidates (per ScoreWeights-ranked word_decoder
+# output) are retained and passed to the LM for reranking. Keeps this
+# a RERANKING problem, not open-ended generation -- the LM only ever
+# picks among words the sensor/dictionary pipeline already proposed.
+LANGUAGE_MODEL_TOP_K_CANDIDATES = int(os.environ.get("LANGUAGE_MODEL_TOP_K_CANDIDATES", "5"))

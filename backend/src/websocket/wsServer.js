@@ -6,6 +6,15 @@
  * via ws.sessionId. This mirrors the REST session model exactly (same
  * sessionManager, same Python session underneath) -- WS is just a more
  * convenient transport for continuous sensor streaming.
+ *
+ * NEW (additive, Level-3 contextual correction): the `word_committed`
+ * event now ALSO carries a `contextual` block (finalWord,
+ * languageModelUsed, reranked, context, topCandidates) -- mirrors
+ * exactly what backend/routes/word.js's REST endpoint now returns, so
+ * both transports stay in sync. No existing field on `word_committed`
+ * changed shape or meaning; old frontend code that ignores `contextual`
+ * keeps working unmodified. There is still no `commit_sentence` message
+ * type anywhere in this protocol.
  */
 import { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,6 +41,25 @@ function isValidSensorRow(row) {
     row.length === 9 &&
     row.every((v) => typeof v === 'number' && Number.isFinite(v))
   );
+}
+
+function buildContextualBlock(result) {
+  // Present with safe defaults even when the language layer is
+  // disabled/unavailable on the Python side, so the frontend never has
+  // to special-case a missing field.
+  return {
+    finalWord: result.final_word ?? result.corrected_word,
+    languageModelUsed: Boolean(result.language_model_used),
+    reranked: Boolean(result.reranked),
+    context: result.context ?? '',
+    topCandidates: (result.top_candidates ?? []).map((c) => ({
+      word: c.word,
+      finalScore: c.final_score,
+      lmLogProb: c.lm_log_prob ?? null,
+      lmScore: c.lm_score ?? null,
+      combinedScore: c.combined_score ?? null,
+    })),
+  };
 }
 
 export function attachWebSocketServer(server) {
@@ -163,7 +191,10 @@ export function attachWebSocketServer(server) {
             session.debug.lastCommitLatencyMs = latencyMs;
             session.state = prevState === SessionState.STOPPED ? SessionState.STOPPED : SessionState.RUNNING;
 
-            logger.info(`[WORD] session=${session.id} committed="${result.corrected_word}" latency=${latencyMs}ms`);
+            logger.info(
+              `[WORD] session=${session.id} committed="${result.corrected_word}" ` +
+              `final="${result.final_word ?? result.corrected_word}" latency=${latencyMs}ms`
+            );
 
             ws.send(
               envelope('word_committed', session.id, {
@@ -179,6 +210,8 @@ export function attachWebSocketServer(server) {
                   wordFrequency: result.word_frequency ?? null,
                   languageModelScore: result.lm_score ?? null,
                 },
+                // NEW (additive): see buildContextualBlock() above.
+                contextual: buildContextualBlock(result),
                 latencyMs,
               }, requestId)
             );

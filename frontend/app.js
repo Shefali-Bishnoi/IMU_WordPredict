@@ -12,6 +12,13 @@
  * interface requested in the task spec without over-engineering it into
  * real JS classes, since all three sources reduce to "call captureRow()
  * with a 9-number array."
+ *
+ * NEW (additive, Level-3 contextual correction): `word_committed` now
+ * carries a `contextual` block (see wsServer.js). This file renders it
+ * in a dedicated, unobtrusive "Contextual Correction" panel and keeps a
+ * running "Text Buffer" panel in sync. There is still NO "Commit
+ * Sentence" button/message anywhere -- the text buffer grows one word
+ * at a time via the existing "Predict Word" (commit_word) action only.
  */
 
 const MAX_TABLE_ROWS = 300;      // cap on rendered <tr> rows (perf)
@@ -104,6 +111,7 @@ function handleServerMessage(msg) {
       el('meta-state').textContent = msg.data.state;
       resetCharacterBuffer();
       resetWord();
+      resetTextBuffer();
       log(`Session started: ${msg.session_id}`);
       renderDebug(msg.data);
       break;
@@ -133,20 +141,22 @@ function handleServerMessage(msg) {
     }
 
     case 'word_committed':
-      log(`Word committed: raw="${msg.data.rawWord}" -> corrected="${msg.data.correctedWord}"`);
+      log(`Word committed: raw="${msg.data.rawWord}" -> corrected="${msg.data.correctedWord}"` +
+          (msg.data.contextual && msg.data.contextual.reranked
+            ? ` -> contextual="${msg.data.contextual.finalWord}"`
+            : ''));
       el('current-word').textContent = '—';
       el('meta-text-so-far').textContent = msg.data.textSoFar || '—';
       renderPipeline(msg.data.pipeline, null);
       renderFinalWord(msg.data);
+      renderTextBuffer(msg.data.textSoFar);
+      renderContextualPanel(msg.data.contextual);
       renderDebug(msg.data);
-      // NOTE: deliberately NOT calling resetCharHistory() here -- it used
-      // to run immediately after renderFinalWord() and set the result
-      // panel straight back to display:none in the same tick, so the
-      // word result never actually appeared (only the log line above
-      // did). The character chips + final word both stay visible so you
-      // can see how the word was built, and clear automatically once you
-      // start the next word (see the committedCharacters.length === 1
-      // check in the prediction_update handler above).
+      // NOTE: deliberately NOT calling resetCharHistory() here -- see
+      // the comment this file already had; character chips + final word
+      // both stay visible so you can see how the word was built, and
+      // clear automatically once you start the next word (see the
+      // committedCharacters.length === 1 check in prediction_update).
       break;
 
     case 'session_reset':
@@ -157,6 +167,7 @@ function handleServerMessage(msg) {
       el('meta-text-so-far').textContent = '—';
       resetCharacterBuffer();
       resetWord();
+      resetTextBuffer();
       clearPrediction();
       renderDebug(msg.data);
       break;
@@ -331,7 +342,11 @@ function resetWord() {
 function renderFinalWord(data) {
   const section = el('final-word-section');
   section.style.display = 'block';
-  el('final-word').textContent = data.correctedWord || '—';
+  // The headline word shown here is the FINAL word actually appended to
+  // the text buffer -- equal to correctedWord unless contextual
+  // reranking changed it (see renderContextualPanel for the "why").
+  const finalWord = (data.contextual && data.contextual.finalWord) || data.correctedWord;
+  el('final-word').textContent = finalWord || '—';
   el('final-word-raw').textContent = `raw: "${data.rawWord}"  ·  confidence: ${(data.confidence * 100).toFixed(1)}%${data.isLowConfidence ? '  ·  LOW CONFIDENCE' : ''}`;
   const bar = el('final-confidence-bar');
   bar.style.width = `${Math.round(data.confidence * 100)}%`;
@@ -351,10 +366,11 @@ function renderPipeline(pipeline, character) {
     lines.push('   ↓', 'Dictionary Correction');
     lines.push(`   Edit similarity: ${pipeline.editSimilarity ?? 'Not available'}`);
     lines.push(`   Word frequency: ${pipeline.wordFrequency ?? 'Not available'}`);
-    lines.push('   ↓', 'Language Model');
+    lines.push('   ↓', 'Language Model (n-gram, search-time)');
     lines.push(`   Score: ${pipeline.languageModelScore ?? 'Not available'}`);
   }
   lines.push('   ↓', 'Personalization: INACTIVE (not wired into this UI flow)');
+  lines.push('   ↓', 'Contextual Correction (causal LM reranking) — see panel below');
   lines.push('   ↓', 'Final Output');
   if (pipeline.note) lines.push('', `Note: ${pipeline.note}`);
   el('pipeline-diagram').textContent = lines.join('\n');
@@ -362,6 +378,63 @@ function renderPipeline(pipeline, character) {
 
 function renderDebug(data) {
   el('debug-json').textContent = JSON.stringify(data, null, 2);
+}
+
+// ---------------------------------------------------------------------
+// NEW: Text / Sentence buffer panel. No "Commit Sentence" control here
+// or anywhere else -- this simply mirrors textSoFar, which only ever
+// grows one word at a time via commit_word.
+// ---------------------------------------------------------------------
+function renderTextBuffer(textSoFar) {
+  const box = el('text-buffer');
+  if (!box) return;
+  box.textContent = textSoFar && textSoFar.trim() ? textSoFar : '—';
+}
+
+function resetTextBuffer() {
+  renderTextBuffer('');
+  renderContextualPanel(null);
+}
+
+// ---------------------------------------------------------------------
+// NEW: Contextual correction panel (Level-3, causal LM reranking).
+// Shown unobtrusively -- collapses to a quiet "not used" state when the
+// language layer is disabled/unavailable/didn't change anything, and
+// only calls out a change when reranking actually picked a different
+// word than the existing sensor/dictionary pipeline did.
+// ---------------------------------------------------------------------
+function renderContextualPanel(contextual) {
+  const panel = el('contextual-panel');
+  if (!panel) return;
+
+  if (!contextual || !contextual.languageModelUsed) {
+    panel.className = 'contextual-panel inactive';
+    el('contextual-context').textContent = contextual && contextual.context ? contextual.context : '—';
+    el('contextual-status').textContent = contextual
+      ? 'Language model not used for this word (disabled, unavailable, or no candidates to score).'
+      : 'Not available yet — commit a word first.';
+    el('contextual-candidates').innerHTML = '';
+    return;
+  }
+
+  panel.className = `contextual-panel active${contextual.reranked ? ' reranked' : ''}`;
+  el('contextual-context').textContent = contextual.context || '—';
+  el('contextual-status').textContent = contextual.reranked
+    ? `Contextual scoring changed the selected word to "${contextual.finalWord}".`
+    : 'Contextual scoring agreed with the existing sensor/dictionary pick.';
+
+  const list = el('contextual-candidates');
+  list.innerHTML = '';
+  (contextual.topCandidates || []).forEach((c) => {
+    const row = document.createElement('div');
+    row.className = `contextual-candidate-row${c.word === contextual.finalWord ? ' selected' : ''}`;
+    const combined = c.combinedScore !== null && c.combinedScore !== undefined ? c.combinedScore.toFixed(3) : '—';
+    const lm = c.lmScore !== null && c.lmScore !== undefined ? c.lmScore.toFixed(3) : '—';
+    row.innerHTML = `
+      <span class="cc-word">${c.word}</span>
+      <span class="cc-detail">decoder: ${c.finalScore.toFixed(3)} · lm: ${lm} · combined: ${combined}</span>`;
+    list.appendChild(row);
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -390,7 +463,9 @@ function randomSensorRow() {
 // config.py: 12 cols, no header -- label(0), timestamp(1), 9 sensor
 // values(2-10), writing flag(11)). Extracts ONLY the 9 sensor columns;
 // a consistent label across rows is shown as ground truth, never sent
-// to the model.
+// to the model. UNCHANGED by the language-layer feature -- still the
+// primary way to exercise the full character→word→commit→text-buffer→
+// contextual-correction flow before real hardware is available.
 // ---------------------------------------------------------------------
 function parseTrainingSample(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
@@ -510,7 +585,8 @@ document.querySelectorAll('input[name="source"]').forEach((input) => {
 });
 
 // ---------------------------------------------------------------------
-// Model info (valid length band) -- fetched once, purely informational
+// Model info (valid length band + language-layer availability) --
+// fetched once, purely informational.
 // ---------------------------------------------------------------------
 async function loadModelInfo() {
   try {
@@ -522,8 +598,18 @@ async function loadModelInfo() {
       state.maxRawLines = info.max_raw_lines;
       el('meta-band').textContent = `${info.min_raw_lines}–${info.max_raw_lines}`;
     }
+    const lmBadge = el('meta-lm-status');
+    if (lmBadge) {
+      if (info.language_model_available) {
+        lmBadge.textContent = `on (${info.language_model_name}, weight=${info.language_model_weight})`;
+      } else if (info.language_model_enabled_config) {
+        lmBadge.textContent = 'enabled but unavailable (failed to load)';
+      } else {
+        lmBadge.textContent = 'disabled';
+      }
+    }
   } catch (e) {
-    // Non-fatal -- the band display just stays at its default.
+    // Non-fatal -- the band/LM-status display just stays at its default.
   }
 }
 
@@ -550,7 +636,9 @@ el('btn-clear-character').onclick = () => {
 el('btn-clear-word').onclick = () => {
   // Same caveat as above: there's no dedicated "clear word, keep
   // session" server message, so this uses the existing reset_session
-  // message, which also clears the in-progress character buffer.
+  // message, which also clears the in-progress character buffer. There
+  // is still deliberately NO "clear text buffer only" / "commit
+  // sentence" action.
   send('reset_session');
 };
 
@@ -574,5 +662,6 @@ el('btn-marker-disconnect').onclick = disconnectMarker;
 // ---------------------------------------------------------------------
 setSource('demo');
 renderSparklines();
+resetTextBuffer();
 connect();
 loadModelInfo();

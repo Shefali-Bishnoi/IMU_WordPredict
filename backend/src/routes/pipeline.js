@@ -31,6 +31,25 @@ router.get('/pipeline/status', async (req, res, next) => {
             '(/session/{id}/correct-character, /session/{id}/personalized-predict) ' +
             'but are not wired into this realtime session/UI flow yet.',
         },
+        {
+          // NEW (additive): Level-3 contextual correction (pretrained
+          // causal LM reranking committed words against preceding
+          // context). Distinct from the character-n-gram
+          // 'language_model' stage above, which scores raw character
+          // sequences during beam search, not committed words against
+          // sentence-level context.
+          name: 'contextual_correction',
+          available: Boolean(info.language_model_available),
+          enabledInConfig: Boolean(info.language_model_enabled_config),
+          modelName: info.language_model_name ?? null,
+          weight: info.language_model_weight ?? null,
+          contextWords: info.language_context_words ?? null,
+          detail: info.language_model_available
+            ? `pretrained causal LM (${info.language_model_name}) reranking committed-word candidates`
+            : (info.language_model_enabled_config
+              ? 'enabled in config but failed to load -- falling back to existing pipeline'
+              : 'disabled (LANGUAGE_MODEL_ENABLED=false)'),
+        },
       ],
       decoderWeights: info.decoder_weights ?? null,
       tauWord: info.tau_word ?? null,

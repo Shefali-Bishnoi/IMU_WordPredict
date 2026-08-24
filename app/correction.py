@@ -19,12 +19,28 @@ word_frequency / lm_score / final_score / is_known_word. These were
 already computed by WordDecoder.decode() (see inference/word_decoder.py's
 Candidate dataclass) -- they just weren't surfaced past correct_word()
 before. Nothing about the scoring/decoding logic itself changed.
+
+NEW ADDITIVE CHANGE (Level-3 contextual correction / language layer):
+CorrectionResult now ALSO carries `top_candidates` -- the same
+already-computed, already-ranked candidate list WordDecoder.decode()
+produced (word + all of its component scores), truncated to
+config.LANGUAGE_MODEL_TOP_K_CANDIDATES entries. This is what lets
+language/contextual_scorer.py rerank among candidates the sensor/
+dictionary pipeline already proposed, instead of inventing new words.
+This field is purely additive (defaults to a single-entry list built
+from the existing best-candidate fields when the decoder produced no
+list, e.g. the "no probabilities" fallback) -- nothing about the
+existing `corrected_word` / `confidence` / `is_low_confidence` selection
+logic changes at all. The word-level decoder's own best pick remains
+exactly what gets returned as `corrected_word`; contextual reranking
+(if enabled) is applied ON TOP of this in app/main.py, never inside
+this function.
 """
 from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import config
@@ -32,6 +48,8 @@ from inference.word_decoder import ScoreWeights, WordDecoder
 from language.ngram import NgramLanguageModel
 
 _WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "experiments" / "decoder_weights.json"
+
+_TOP_CANDIDATES_LIMIT = getattr(config, "LANGUAGE_MODEL_TOP_K_CANDIDATES", 5)
 
 
 def _load_tuned_config() -> tuple[ScoreWeights, float, "NgramLanguageModel | None", float]:
@@ -87,12 +105,22 @@ class CorrectionResult:
     lm_score: float | None = None
     final_score: float | None = None
     is_known_word: bool | None = None
+    # NEW ADDITIVE (Level-3 language layer): top-K ranked candidates as
+    # plain dicts {"word", "beam_score", "edit_similarity",
+    # "word_frequency", "lm_score", "final_score", "is_known_word"} --
+    # exactly WordDecoder's own candidate dicts, truncated. Consumed by
+    # language/contextual_scorer.rerank_candidates(); ignored entirely
+    # by any existing caller that doesn't know about it.
+    top_candidates: list = field(default_factory=list)
 
 
 def correct_word(characters: list[str], probabilities: list[list[float]]) -> CorrectionResult:
     raw_word = "".join(characters)
     if not probabilities:
-        return CorrectionResult(raw_word, raw_word, confidence=1.0, is_low_confidence=False)
+        return CorrectionResult(
+            raw_word, raw_word, confidence=1.0, is_low_confidence=False,
+            top_candidates=[{"word": raw_word, "final_score": 1.0}],
+        )
 
     result = _decoder.decode(probabilities)
     candidates = result["candidates"]
@@ -115,4 +143,5 @@ def correct_word(characters: list[str], probabilities: list[list[float]]) -> Cor
         lm_score=best.get("lm_score"),
         final_score=best.get("final_score"),
         is_known_word=best.get("is_known_word"),
+        top_candidates=candidates[:_TOP_CANDIDATES_LIMIT],
     )

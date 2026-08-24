@@ -410,3 +410,78 @@ tbody tr:last-child td { color: var(--fg); font-weight: 600; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Text / Sentence buffer ---------- */
+.text-buffer {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  line-height: 1.6;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--fg);
+  min-height: 28px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* ---------- Contextual correction panel ---------- */
+.contextual-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--bg-inset);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.contextual-panel.inactive {
+  color: var(--fg-faint);
+}
+
+.contextual-panel.active {
+  border-color: var(--border-strong);
+}
+
+/* Only call attention to the panel when reranking actually changed the
+   selected word -- an unobtrusive amber accent, consistent with the
+   existing low-confidence amber used elsewhere (--status-amber). */
+.contextual-panel.reranked {
+  border-color: var(--status-amber);
+  background: var(--status-amber-bg);
+}
+
+.contextual-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.contextual-candidate-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+
+.contextual-candidate-row.selected {
+  border-color: var(--fg);
+  font-weight: 700;
+}
+
+.contextual-candidate-row .cc-word {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+
+.contextual-candidate-row .cc-detail {
+  font-family: var(--font-mono);
+  color: var(--fg-faint);
+  font-size: 0.7rem;
+}

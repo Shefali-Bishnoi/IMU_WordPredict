@@ -12,6 +12,16 @@ const router = Router();
  * express with a stroke. Runs the EXISTING beam search + dictionary +
  * (if loaded) n-gram language-model correction on the Python side
  * (app/correction.py) -- Node does not reimplement any of it.
+ *
+ * NEW (additive, Level-3 contextual correction): the Python /commit
+ * response now ALSO carries finalWord/languageModelUsed/reranked/
+ * context/topCandidates -- the result of reranking the word decoder's
+ * top candidates against the session's preceding committed text using
+ * a pretrained causal language model (see app/main.py /
+ * language/contextual_scorer.py). This is a RERANK of words the
+ * existing pipeline already proposed, never a new generated word.
+ * There is still NO "commit sentence" operation -- this remains a
+ * per-word call, exactly as before.
  */
 router.post('/word/commit', async (req, res, next) => {
   try {
@@ -37,7 +47,11 @@ router.post('/word/commit', async (req, res, next) => {
     session.debug.lastCommitLatencyMs = latencyMs;
     session.state = prevState === SessionState.STOPPED ? SessionState.STOPPED : SessionState.RUNNING;
 
-    logger.info(`[WORD] session=${sessionId} committed="${result.corrected_word}" latency=${latencyMs}ms`);
+    logger.info(
+      `[WORD] session=${sessionId} committed="${result.corrected_word}" ` +
+      `final="${result.final_word ?? result.corrected_word}" ` +
+      `lm_used=${Boolean(result.language_model_used)} latency=${latencyMs}ms`
+    );
 
     res.json({
       sessionId,
@@ -55,6 +69,23 @@ router.post('/word/commit', async (req, res, next) => {
         ...(result.beam_score === undefined
           ? { note: 'Granular beam/dictionary/LM scores not returned by this python service version.' }
           : {}),
+      },
+      // NEW (additive): Level-3 contextual correction block. Present
+      // (with sensible defaults) even when the language layer is
+      // disabled/unavailable, so the frontend never has to special-case
+      // a missing field -- languageModelUsed simply reads false.
+      contextual: {
+        finalWord: result.final_word ?? result.corrected_word,
+        languageModelUsed: Boolean(result.language_model_used),
+        reranked: Boolean(result.reranked),
+        context: result.context ?? '',
+        topCandidates: (result.top_candidates ?? []).map((c) => ({
+          word: c.word,
+          finalScore: c.final_score,
+          lmLogProb: c.lm_log_prob ?? null,
+          lmScore: c.lm_score ?? null,
+          combinedScore: c.combined_score ?? null,
+        })),
       },
       latencyMs,
     });
