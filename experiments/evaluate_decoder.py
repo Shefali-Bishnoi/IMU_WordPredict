@@ -58,11 +58,7 @@ def _int_list(s: str) -> list[int]:
     return [int(x) for x in s.split(",") if x.strip() != ""]
 
 
-# ---------------------------------------------------------------------------
 # Tuned-weights loading (mirrors app/correction.py's _load_tuned_config).
-# FIXED in this revision: delta and search_lambda_lm are now actually
-# read and returned, instead of being silently dropped.
-# ---------------------------------------------------------------------------
 def load_tuned_weights(path: Path = TUNED_WEIGHTS_PATH) -> tuple[ScoreWeights, float, float, dict]:
     if not path.exists():
         raise FileNotFoundError(

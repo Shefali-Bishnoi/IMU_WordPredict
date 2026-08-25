@@ -1,25 +1,4 @@
-"""
-Normalized Levenshtein similarity + a BK-tree index over the wordfreq
-vocabulary for fast fuzzy correction.
-
-The earlier brute-force length-windowed scan was fine at 50k words for
-occasional lookups, but doesn't scale if vocab_size grows or corrections
-happen at high frequency. A BK-tree prunes most of the tree per query
-instead of scanning every candidate word -- the standard technique for
-"find words within edit distance D of X" at dictionary scale.
-
-CHANGE (tie-preservation fix): the original `nearest_known_word` picked
-ONE winner among words tied at the same minimum edit distance (via a
-frequency tiebreak) and discarded the rest. This silently ate genuine
-ambiguity -- e.g. for raw text "helo", both "help" and "hello" are
-edit-distance 1, but only "help" ever reached the decoder's scoring
-stage, so "hello" could never win even when it was the actually-intended
-word and later context (or a closer word-frequency/LM score) would have
-favored it. `nearest_known_words` (plural) now returns ALL tied words;
-`nearest_known_word` (singular) is kept for any caller that still only
-wants one answer, and is now just a thin wrapper around the plural
-version so there's a single source of truth for the search logic.
-"""
+"""Levenshtein similarity and BK-tree fuzzy lookup over the wordfreq vocabulary."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -115,24 +94,9 @@ def nearest_known_words(
     max_search_distance: int = 3,
     max_candidates: int = 5,
 ) -> list[tuple[str, float]]:
-    """Like nearest_known_word, but returns ALL words tied at the minimum
-    edit distance (up to max_candidates), not just one frequency-selected
-    winner.
+    """Return all words tied at minimum edit distance (up to max_candidates).
 
-    This matters because a tie (e.g. "help" vs "hello", both distance 1
-    from "helo") should be decided by the full downstream scoring
-    (beam_score + edit_similarity + word_frequency + LM), not thrown
-    away before that scoring ever runs.
-
-    Sorted by (frequency desc, word asc) for determinism, but unlike the
-    old nearest_known_word, nothing at the winning distance is dropped
-    (only candidates beyond max_candidates, if there are more ties than
-    that -- kept small by default since this is meant to catch genuine
-    close ties, not flood the candidate pool).
-
-    Returns [(word, normalized_similarity), ...], best-first (by
-    frequency), all sharing the same edit distance (or the single exact
-    match / single fallback, in the two special-case branches below).
+    Returns [(word, normalized_similarity), ...], sorted by frequency then word.
     """
     lowered = candidate.lower()
     if is_known_word(lowered, vocab_size):
@@ -159,15 +123,5 @@ def nearest_known_word(
     vocab_size: int = DEFAULT_VOCAB_SIZE,
     max_search_distance: int = 3,
 ) -> tuple[str, float]:
-    """Return (closest_known_word, normalized_similarity) -- the single
-    best answer. Kept for any caller that only wants one result (e.g.
-    quick debugging/inspection scripts); internally just takes the top
-    of nearest_known_words() so there is one shared source of truth for
-    the search logic instead of two independently-maintained versions.
-
-    NOTE: inference/word_decoder.py's WordDecoder no longer calls this --
-    it calls nearest_known_words() (plural) directly so ties are not
-    collapsed before scoring. This singular function remains for
-    everything else that only ever wanted one answer.
-    """
+    """Return (best_known_word, normalized_similarity). Wrapper around nearest_known_words()."""
     return nearest_known_words(candidate, vocab_size, max_search_distance, max_candidates=1)[0]

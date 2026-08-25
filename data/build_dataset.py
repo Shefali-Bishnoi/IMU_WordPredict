@@ -83,12 +83,7 @@ def _check_class_coverage(labels: dict[str, list[int]]) -> None:
 
 
 def _report_class_imbalance(labels: dict[str, list[int]]) -> dict:
-    """Print a per-class count table for the train split and return the
-    full per-split counts (used for the dataset manifest). This does NOT
-    apply any correction (e.g. class weights) automatically -- per the
-    review discussion, imbalance should be *measured* first; whether to
-    act on it (class weights, oversampling, etc.) is a separate, later
-    decision made with evidence, not assumed here."""
+    """Print per-class counts for the train split; return counts for the manifest."""
     counts_by_bucket: dict[str, dict[str, int]] = {}
     for bucket in ("train", "val", "test"):
         counter = Counter(labels[bucket])

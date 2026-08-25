@@ -25,9 +25,7 @@ def main(order: int, vocab_size: int) -> None:
     print(f"[ngram] vocab (chars) = {len(model.vocab)}, contexts learned = {len(model.totals)}")
     print(f"[save] {OUT_PATH}")
 
-    # Sanity check: a plausible English continuation should outscore an
-    # implausible one -- if this fails, don't proceed to wiring the model
-    # into the decoder.
+    # Sanity: logP('e'|'appl') should exceed logP('z'|'appl').
     good = model.next_char_logprob(list("appl"), "e")
     bad = model.next_char_logprob(list("appl"), "z")
     status = "OK" if good > bad else "UNEXPECTED -- check training data/order before using this model"

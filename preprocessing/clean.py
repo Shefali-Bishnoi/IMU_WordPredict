@@ -1,11 +1,4 @@
-"""
-Cleans sensor readings that contain literal 'ovf' / 'nan' / unparsable
-values, replacing them with the nearest valid value in the same channel
-(forward-fill then back-fill), falling back to 0.0 only if a channel is
-entirely invalid. This is a vectorized, well-defined replacement for the
-old notebook's per-cell nested-loop scan (which additionally leaked state
-across samples via a single global `tmpval`).
-"""
+"""Replace invalid ovf/nan/unparsable sensor values with ffill/bfill per channel."""
 from __future__ import annotations
 
 import numpy as np
