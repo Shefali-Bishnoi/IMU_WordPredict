@@ -1,16 +1,8 @@
 """
-Train the character n-gram language model (ActionPlan.md Priority 4,
-Step 19: "Implement character n-gram language scoring (trained on
-external text, not the IMU dataset)") and save it to
-experiments/ngram_model.json.
-
-Trains on wordfreq's English word list -- entirely external text,
-decoupled from the IMU dataset per ActionPlan.md Sec.4.3/12.2. No IMU
-data, model files, or GPU needed for this step; it runs in seconds.
+Train the character n-gram language model and save to experiments/ngram_model.json.
 
 Usage:
     python -m experiments.build_ngram_model
-    python -m experiments.build_ngram_model --order 4 --vocab-size 100000
 """
 from __future__ import annotations
 
@@ -19,10 +11,7 @@ import argparse
 from config import EXPERIMENTS_DIR
 from language.ngram import DEFAULT_MODEL_VOCAB_SIZE, DEFAULT_ORDER, NgramLanguageModel
 
-# Add this to config.py alongside NORM_STATS_PATH / decoder weights path:
-#     NGRAM_MODEL_PATH = EXPERIMENTS_DIR / "ngram_model.json"
-# Using EXPERIMENTS_DIR directly here so this script works even before
-# that one-line config.py addition is made.
+# Default output path (also available as config.NGRAM_MODEL_PATH).
 OUT_PATH = EXPERIMENTS_DIR / "ngram_model.json"
 
 

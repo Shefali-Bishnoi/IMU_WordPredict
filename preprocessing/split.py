@@ -1,8 +1,4 @@
-"""
-Participant-disjoint train/test split, frozen to a JSON config file so
-every later experiment is comparable against the exact same split
-(ActionPlan.md Priority 0 / Step 4).
-"""
+"""Participant-disjoint train/test split, frozen to a JSON config file."""
 from __future__ import annotations
 
 import json
@@ -19,15 +15,7 @@ def discover_participant_ids(raw_root: Path) -> list[str]:
 
 
 def assert_disjoint_splits(split: dict) -> None:
-    """Guarantee train/val/test participant sets never overlap.
-
-    This should be structurally impossible given how build_or_load_split()
-    constructs the split, but a frozen split.json could in principle be
-    hand-edited or produced by a future code path that doesn't preserve the
-    invariant -- so we verify it explicitly every time a split is loaded or
-    built, rather than assuming it. Raises immediately on any leakage
-    instead of letting it silently inflate downstream metrics.
-    """
+    """Verify train/val/test participant sets never overlap."""
     train_ids, val_ids, test_ids = set(split["train"]), set(split["val"]), set(split["test"])
     overlaps = {
         "train/val": train_ids & val_ids,

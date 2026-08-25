@@ -1,32 +1,4 @@
-"""
-Build the Priority 1 architecture comparison table (ActionPlan.md section
-9.2 / 9.3) from whichever of the three per-architecture metrics.json files
-already exist -- it does NOT train or evaluate anything itself.
-
-Run this AFTER you've run, for each architecture you want in the table:
-    python train.py --arch <arch>
-    python evaluate.py --arch <arch>
-
-Usage:
-    python compare_architectures.py
-
-If only some architectures have been evaluated yet, this prints/saves a
-partial table and tells you which are missing, rather than failing --
-you don't have to train all three before checking progress.
-
-Selection rule applied for the printed recommendation (ActionPlan.md
-9.3, in this exact priority order):
-    1. Macro F1
-    2. Robustness across classes (worst-class F1, not just the average)
-    3. Inference latency
-    4. Model size
-    5. Implementation complexity (not automatable -- left to you)
-
-This script only *surfaces* that ranking; ActionPlan.md is explicit that
-you should not "automatically choose the largest/most complex model" --
-the printed recommendation is a starting point for your own judgment call,
-not a command to blindly accept.
-"""
+"""Build architecture comparison table from per-arch metrics.json files."""
 from __future__ import annotations
 
 import json

@@ -3,26 +3,6 @@ Build the processed dataset from raw IMU instance files.
 
 Usage:
     python -m data.build_dataset --raw-root data/raw/Dataset --resample
-
-This is the canonical, scripted replacement for the old ad-hoc Colab
-notebook (ActionPlan.md section 4.2): every step is deterministic, logged,
-and produces artifacts that training/evaluation/inference all read from the
-same place (no hardcoded participant lists, no in-place file mutation).
-
-Priority 0 audit fixes applied here (see review discussion):
-  - Normalization mean/std are computed from REAL, UNPADDED train sensor
-    rows only. Padding rows created by pad_or_trim() are produced *after*
-    stats are locked in and are normalized using those stats -- they can
-    no longer bias mean/std.
-  - Every one of the 52 classes is required to have at least one TRAIN
-    example; the build fails fast if not (val/test only warn), instead of
-    silently producing a model whose output layer doesn't match what it
-    actually learned.
-  - The frozen participant split is verified disjoint (see
-    preprocessing/split.assert_disjoint_splits).
-  - (New) A dataset manifest (experiments/dataset_manifest.json) and a
-    printed per-class count table are produced so class imbalance is
-    visible up front rather than discovered later from a confusion matrix.
 """
 from __future__ import annotations
 

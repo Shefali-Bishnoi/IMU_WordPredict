@@ -1,20 +1,4 @@
-"""
-CNN-BiLSTM sensor model (ActionPlan.md Priority 1, section 9.1 Option B).
-
-Identical CNN front-end to the baseline cnn_lstm.py, but the uni-directional
-LSTM(32) is replaced with a Bidirectional(LSTM(32)) (-> 64-dim feature
-vector), so the encoder can use information from *both* temporal
-directions. Per ActionPlan.md, this is a fair thing to try specifically
-because each training instance is a whole, already-segmented character
-window -- we are not doing streaming/online recognition, so looking
-"backwards" in time within one instance is not a form of cheating/leakage.
-
-Deliberately mirrors cnn_lstm.py's public interface exactly
-(build_encoder, build_classifier, build_full_model) so the rest of the
-codebase (train.py, evaluate.py, Priority 5's adapter) can select between
-architectures purely by name, never by branching on internal structure --
-see models/__init__.py's ARCH_BUILDERS registry.
-"""
+"""CNN-BiLSTM sensor model (bidirectional LSTM instead of unidirectional)."""
 from __future__ import annotations
 
 from tensorflow import keras
@@ -42,8 +26,6 @@ def build_encoder(
     x = layers.LeakyReLU()(x)
     x = layers.MaxPooling1D(pool_size=2, padding="same")(x)
 
-    # Only architectural change vs. cnn_lstm.py: Bidirectional wrapper.
-    # Output feature dim is 2 * lstm_units (forward + backward concatenated).
     x = layers.Bidirectional(layers.LSTM(lstm_units), name="bilstm")(x)
     features = layers.Dropout(dropout, name="features")(x)
 
@@ -64,12 +46,7 @@ def build_full_model(
     num_classes: int = NUM_CLASSES,
     dropout: float = 0.3,
 ) -> tuple[keras.Model, keras.Model, keras.Model]:
-    """Returns (full_model, encoder, classifier) -- same contract as
-    cnn_lstm.build_full_model. `feature_dim` handed to build_classifier is
-    read off encoder.output_shape[-1] rather than hardcoded, since it's
-    64 here (2x lstm_units) instead of cnn_lstm's 32 -- this is exactly
-    the kind of thing ActionPlan.md 13.10 warns Priority 5's adapter must
-    not hardcode either."""
+    """Returns (full_model, encoder, classifier)."""
     encoder = build_encoder(seq_len, n_channels, dropout)
     classifier = build_classifier(encoder.output_shape[-1], num_classes)
 

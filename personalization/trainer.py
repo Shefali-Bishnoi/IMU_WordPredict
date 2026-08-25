@@ -1,11 +1,4 @@
-"""
-Adapter-only training + validation gate (ActionPlan.md 13.8's safety
-rule, session-scoped instead of persisted): a candidate update is only
-kept if it does not regress held-out accuracy on this SAME session's
-already-confirmed samples. Rejected updates restore the prior adapter
-weights exactly -- the live model can only get better or stay the same
-across a session, never silently worse.
-"""
+"""Session-scoped adapter-only training with held-out validation gate."""
 from __future__ import annotations
 
 import numpy as np

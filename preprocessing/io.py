@@ -147,8 +147,7 @@ def load_raw_file(filepath: Path) -> np.ndarray:
 def get_char_label(raw_matrix: np.ndarray, expected: str | None = None) -> str:
     """Return the (verified-consistent) character label for an instance.
 
-    The label is redundant on every row by design; if it ever differs
-    mid-file the file is corrupt (see ActionPlan.md 4.4), so we check.
+    The label is redundant on every row; inconsistent labels indicate corruption.
 
     When *expected* is supplied (the label implied by the directory layout,
     e.g. ``capital letters/P/...`` -> ``'P'``), it is used as the canonical

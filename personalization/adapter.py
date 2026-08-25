@@ -1,32 +1,10 @@
-"""
-Session-scoped residual adapter (ActionPlan.md Priority 5, session-level
-variant). Sits between the frozen encoder and frozen classifier of
-whichever Priority-1 architecture won (tcn):
+"""Session-scoped residual adapter between frozen encoder and classifier.
 
-    h  = encoder(x)          # frozen, unchanged weights
-    h' = h + adapter(h)      # NEW, trainable, lives only for one session
-    p  = classifier(h')      # frozen, unchanged weights
+    h  = encoder(x)
+    h' = h + adapter(h)
+    p  = classifier(h')
 
-Safety-by-construction: `up` (the adapter's output projection) is
-zero-initialized, so adapter(h) == 0 for every h at construction time
--> h' == h exactly. A freshly-created SessionAdapter is mathematically
-identical to no adapter at all. This is what guarantees every existing
-script (evaluate.py, test_beam_dictionary.py, experiments/*) is
-completely unaffected by this module existing -- nothing changes unless
-adapt_session() is explicitly called on a session's own adapter.
-
-encoder/classifier are frozen (`.trainable = False`) INSIDE
-build_personalized_model only -- this flips the `.trainable` attribute
-on the actual Keras Layer objects you pass in. If you reuse the SAME
-encoder/classifier objects elsewhere (e.g. CharacterRecognizer.model),
-freezing them here does not change CharacterRecognizer.model's own
-predictions (that's a separate compiled Model over the same layers;
-`.trainable` only affects gradient computation through the model that
-is *actually compiled and fit*, i.e. `personalized_model`), but it DOES
-mean encoder/classifier won't accidentally be trained if some other
-code later calls .fit() on a model containing them. That's intentional
-and matches ActionPlan.md 13.4 ("global model frozen during
-personalization").
+The adapter output projection is zero-initialized so h' == h at startup.
 """
 from __future__ import annotations
 
@@ -59,11 +37,7 @@ def build_personalized_model(
     classifier: keras.Model,
     bottleneck: int = 16,
 ) -> tuple[keras.Model, SessionAdapter]:
-    """encoder/classifier should be the SEPARATE encoder/classifier
-    objects loaded via inference.realtime.CharacterRecognizer (its
-    .encoder / .classifier attributes, NOT .model). Returns a fresh
-    (personalized_model, adapter) pair -- call this once per session,
-    the first time that session needs personalization."""
+    """Build a session-scoped model with a trainable adapter."""
     feature_dim = int(encoder.output_shape[-1])
     seq_len, n_channels = encoder.input_shape[1], encoder.input_shape[2]
 

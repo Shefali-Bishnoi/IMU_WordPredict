@@ -1,40 +1,10 @@
 """
-Train a sensor recognizer on the processed dataset (run
-data/build_dataset.py first).
-
-Priority 1 change (ActionPlan.md section 9): this script now trains
-WHICHEVER architecture you name with --arch, instead of only the baseline
-CNN-LSTM. All three options from ActionPlan.md 9.1 are implemented and
-registered in models/__init__.py:
-
-    --arch cnn_lstm    Option A (baseline, default -- same as Priority 0)
-    --arch cnn_bilstm  Option B (bidirectional LSTM)
-    --arch tcn         Option C (dilated causal conv, no recurrence)
-
-Nothing about --arch cnn_lstm's *output* changes vs. Priority 0: it saves
-to the exact same paths as before (config.BASELINE_MODEL_PATH etc., via
-config.model_path("cnn_lstm")), so an existing trained baseline is neither
-touched nor required to be retrained. --arch cnn_bilstm and --arch tcn
-save to their own new subdirectories (models/artifacts/<arch>/) and their
-own experiments/<arch>_*.json files, so training one architecture never
-overwrites another -- this is what lets you compare all three side by side
-afterwards with compare_architectures.py before picking a winner
-(ActionPlan.md 9.3's selection rule).
+Train a sensor recognizer on the processed dataset (run data/build_dataset.py first).
 
 Usage:
     python train.py --arch cnn_lstm
     python train.py --arch cnn_bilstm
     python train.py --arch tcn
-    python train.py --arch cnn_bilstm --epochs 60 --batch-size 64
-
-Saves (per architecture):
-    models/artifacts/<arch or legacy path>/...   (full model + encoder/classifier weights)
-    experiments/<arch>_training_history.json      (or training_history.json for cnn_lstm)
-
-Priority 0 audit fix (unchanged, still applies to every architecture):
-num_classes is the architectural constant NUM_CLASSES (52) from config.py,
-not inferred from max(y_train.max(), y_val.max()) + 1 -- see
-_validate_labels() and the train-class-coverage check below.
 """
 from __future__ import annotations
 

@@ -1,41 +1,4 @@
-"""
-Word-correction seam. Loads ScoreWeights (incl. delta) + tau_word +
-search_lambda_lm from experiments/decoder_weights.json when present
-(produced by experiments/tune_decoder_weights.py); falls back to
-untuned defaults otherwise, so this works before AND after tuning with
-no code change.
-
-If decoder_weights.json has a nonzero "delta" and/or "search_lambda_lm"
-(i.e. it was produced by a tuning run that had an n-gram LM available),
-the same n-gram model is loaded here too -- otherwise those fields would
-be silently inert at inference (delta would multiply a ScoreWeights.
-lm_score of 0.0, and search_lambda_lm would have no lm_scorer to steer
-with). Older decoder_weights.json files without these keys still load
-fine: ScoreWeights.delta and search_lambda_lm both default to 0.0.
-
-ADDITIVE CHANGE (for the realtime Node/UI layer): CorrectionResult now
-also carries the winning candidate's beam_score / edit_similarity /
-word_frequency / lm_score / final_score / is_known_word. These were
-already computed by WordDecoder.decode() (see inference/word_decoder.py's
-Candidate dataclass) -- they just weren't surfaced past correct_word()
-before. Nothing about the scoring/decoding logic itself changed.
-
-NEW ADDITIVE CHANGE (Level-3 contextual correction / language layer):
-CorrectionResult now ALSO carries `top_candidates` -- the same
-already-computed, already-ranked candidate list WordDecoder.decode()
-produced (word + all of its component scores), truncated to
-config.LANGUAGE_MODEL_TOP_K_CANDIDATES entries. This is what lets
-language/contextual_scorer.py rerank among candidates the sensor/
-dictionary pipeline already proposed, instead of inventing new words.
-This field is purely additive (defaults to a single-entry list built
-from the existing best-candidate fields when the decoder produced no
-list, e.g. the "no probabilities" fallback) -- nothing about the
-existing `corrected_word` / `confidence` / `is_low_confidence` selection
-logic changes at all. The word-level decoder's own best pick remains
-exactly what gets returned as `corrected_word`; contextual reranking
-(if enabled) is applied ON TOP of this in app/main.py, never inside
-this function.
-"""
+"""Word-correction seam: loads tuned weights from experiments/decoder_weights.json."""
 from __future__ import annotations
 
 import json
@@ -97,20 +60,12 @@ class CorrectionResult:
     corrected_word: str
     confidence: float
     is_low_confidence: bool
-    # ADDITIVE: None when no decoding happened at all (empty probabilities
-    # fallback below); otherwise taken from the winning WordDecoder candidate.
     beam_score: float | None = None
     edit_similarity: float | None = None
     word_frequency: float | None = None
     lm_score: float | None = None
     final_score: float | None = None
     is_known_word: bool | None = None
-    # NEW ADDITIVE (Level-3 language layer): top-K ranked candidates as
-    # plain dicts {"word", "beam_score", "edit_similarity",
-    # "word_frequency", "lm_score", "final_score", "is_known_word"} --
-    # exactly WordDecoder's own candidate dicts, truncated. Consumed by
-    # language/contextual_scorer.rerank_candidates(); ignored entirely
-    # by any existing caller that doesn't know about it.
     top_candidates: list = field(default_factory=list)
 
 

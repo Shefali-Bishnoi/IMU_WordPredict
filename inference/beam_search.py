@@ -1,36 +1,4 @@
-"""
-Beam search over per-position character-probability vectors
-(ActionPlan.md Priority 3), OPTIONALLY guided by a character n-gram
-language model during expansion (ActionPlan.md Priority 4 / FuturePlan.md
-Sec.6.3).
-
-Why the LM has to be wired in HERE, not only as post-hoc re-ranking:
-inference/word_decoder.py's dictionary/frequency correction only ever
-sees the beam's final top-B candidates -- it can reorder them, but it can
-never pull in a hypothesis that pruning already discarded during search.
-Passing `lm_scorer` lets the language model influence WHICH hypotheses
-survive each expansion step, so a wider beam_width can actually recover
-sequences that sensor-score-only pruning would have thrown away before
-the dictionary/LM ever got a look. Per FuturePlan.md Sec.6.2, without
-this the beam's #1 output is mathematically guaranteed to equal greedy's
-#1 output, since summing independent per-position sensor log-probs is
-maximized by the position-wise argmax -- an LM term only reordering a
-FIXED top-B set can never change that fact; it has to affect survival.
-
-Backward compatibility: `lm_scorer=None` and `lambda_lm=0.0` are the
-defaults, and with lambda_lm=0.0 `search_score` reduces to exactly
-`lambda_sensor * sensor_log_prob` -- identical ranking to the pre-LM
-version of this file for any existing caller that doesn't pass the new
-arguments. `log_probability` and `probability` in the returned dicts keep
-their exact old meaning (sensor-only) so nothing downstream
-(inference/word_decoder.py's beam_score normalization) needs to change
-just because an LM is attached.
-
-Input shape: (T, 52) -- one 52-class probability vector per character
-position, exactly what repeated calls to CharacterRecognizer.predict()
-already produce. This module doesn't care how the (T, 52) sequence was
-assembled -- app/session.py's WordBuffer already does that.
-"""
+"""Beam search over per-position character probability vectors."""
 from __future__ import annotations
 
 import math
@@ -38,7 +6,7 @@ from typing import Callable, Optional
 
 from config import NUM_CLASSES, index_to_label
 
-_EPS = 1e-12  # floor for log(0) safety -- never take log of a raw 0.0
+_EPS = 1e-12  # floor for log(0)
 
 # (prefix_chars_so_far, next_char) -> log P(next_char | prefix)
 LmScorer = Callable[[list, str], float]
@@ -65,9 +33,7 @@ class Hypothesis:
 
     @property
     def log_prob(self) -> float:
-        """Backward-compatible alias -- pure sensor log-prob only. LM
-        influence lives in `lm_log_prob` / `search_score`, never mixed
-        into this field."""
+        """Sensor log-prob only (LM influence is in search_score)."""
         return self.sensor_log_prob
 
     def extend(
@@ -98,10 +64,7 @@ def _validate_probabilities(probabilities) -> None:
 
 
 def _top_k_for_position(prob_row, top_k: int) -> list:
-    """Top-k (char, log_prob) pairs for one position, sorted by
-    probability descending. Zero/negative/NaN probabilities are floored
-    to _EPS before log() so a genuinely zero softmax output never
-    raises or produces -inf."""
+    """Top-k (char, log_prob) pairs for one position."""
     indexed = sorted(enumerate(prob_row), key=lambda kv: kv[1], reverse=True)
     out = []
     for idx, p in indexed[:top_k]:
@@ -118,32 +81,7 @@ def beam_search(
     lambda_sensor: float = 1.0,
     lambda_lm: float = 0.0,
 ) -> list:
-    """
-    probabilities: sequence of T rows, each a 52-length probability
-    vector (list/tuple/np.ndarray all fine -- only indexing/len used).
-    beam_width: hypotheses kept alive at every step. 1 == greedy.
-    top_k: candidate characters considered per position when expanding
-    each surviving hypothesis (NOT the number of final results returned
-    -- that's always `beam_width` many).
-    lm_scorer: optional (prefix_chars, next_char) -> log P callable, e.g.
-    language.ngram.NgramLanguageModel.next_char_logprob. When given,
-    PRUNING at every step ranks hypotheses by
-    `lambda_sensor*sensor_log_prob + lambda_lm*lm_log_prob`, not sensor
-    score alone -- this is what lets the LM change which hypotheses
-    survive, not just how survivors get reordered afterward.
-    lambda_sensor / lambda_lm: weights on the two terms above, used ONLY
-    to steer search-time pruning (separate concern from
-    inference/word_decoder.py's ScoreWeights, which does the FINAL
-    re-ranking over survivors). lambda_lm=0.0 (default) reproduces the
-    exact previous sensor-only behavior even if lm_scorer is passed.
-
-    Returns candidates ranked best-first by search_score:
-        {"text": str,
-         "log_probability": float,       # sensor-only, unchanged meaning
-         "lm_log_probability": float,     # new; 0.0 if no lm_scorer given
-         "search_score": float,           # new; what pruning/final sort used
-         "probability": float}            # exp(log_probability), unchanged meaning
-    """
+    """Beam search over (T, 52) character probability sequences."""
     if beam_width < 1:
         raise ValueError(f"beam_width must be >= 1, got {beam_width}")
     if top_k < 1:

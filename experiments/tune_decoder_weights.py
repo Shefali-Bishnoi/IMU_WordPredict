@@ -1,97 +1,9 @@
 """
-Grid-searches ScoreWeights (alpha/beta/gamma) and derives a tau_word
-confidence threshold against SYNTHETIC words built by concatenating
-isolated-character samples. Per ActionPlan.md Sec.4.3, this is NOT real
-continuous handwriting -- it's the best available signal until
-continuous-writing data exists (FuturePlan.md Sec.2.2's pilot).
-Treat the output as a defensible starting point, not a final answer --
-retune once real word-level data exists.
-
-PERFORMANCE FIX (this is why the script used to hang for hours):
-Beam search + dictionary correction (WordDecoder.decode_raw) does NOT
-depend on ScoreWeights -- only the final weighted sum does. The old
-version called decoder.decode(...), which reruns BOTH steps, once per
-(seed x weight-combo x word) -- with ~45 combos x 3 seeds x 800 words
-that's up to ~108,000 full beam-search + BK-tree edit-distance runs,
-when only ~2,400 (seeds x words) were actually necessary.
-
-This version:
-  1. Computes decode_raw() exactly ONCE per (seed, word) -- the expensive
-     part -- optionally in parallel across a process pool (this is
-     pure-Python CPU-bound work, so THREADS would not help: the GIL
-     serializes them anyway. A process pool bypasses the GIL.).
-  2. Grid-searches weights by calling only the cheap
-     WordDecoder.score_raw_candidates() (a weighted sum + sort) against
-     that cached result -- no beam search, no BK-tree lookups, per combo.
-
-ALPHA-FLOOR SWEEP (this revision): the old version required you to
-hand-pick a single --alpha-min floor and rerun the whole script to try
-another one. That's wasteful, since run_grid_from_raw() already computes
-EVERY (alpha, beta, gamma) combo per seed regardless of any floor -- the
-floor only affects which combo gets selected afterward. This version
-instead sweeps a whole list of candidate floors (default: every alpha
-value that actually appears in the grid) against data that's already
-been decoded once, and automatically selects whichever floor's winning
-combo gives the best pooled VAL accuracy across seeds. This replaces
-hand-picking --alpha-min with the same "tune on validation data, don't
-hand-pick constants" discipline the project already applies everywhere
-else (see ActionPlan.md's golden rule). If you still want to force a
-floor (e.g. for a specific ablation write-up), pass a single value via
---alpha-min-candidates 0.5.
-
-Leakage / stability fixes (unchanged from before):
-1. Weights/tau are tuned on VAL only; TEST is touched once, at the end,
-   purely for a confirmatory number.
-2. The full unconstrained (alpha_min=0.05) grid is always run for the
-   diagnostic tradeoff curve; each candidate floor's constrained best is
-   reported separately, so every floor's cost/benefit is visible at once
-   instead of requiring separate reruns.
-3. The grid is repeated across --n-seeds different synthetic-word
-   samples and the winning combo (per floor) must be checked for
-   agreement across seeds (majority vote), with Wilson 95% CI reported.
-
-N-GRAM LM SUPPORT (this revision, ActionPlan.md Priority 4): if
-experiments/ngram_model.json exists (built via
-`python -m experiments.build_ngram_model`), it is loaded ONCE and wired
-through both LM knobs word_decoder.py exposes (see its module docstring
-for why they're separate):
-  1. `search_lambda_lm` -- SEARCH-TIME steering. This changes what
-     decode_raw() actually produces, so it CANNOT be swept as a cheap
-     re-weighting like alpha/beta/gamma/delta -- each candidate value
-     requires a full re-decode. It is therefore swept as a small OUTER
-     loop (default: --search-lambda-lm-candidates, a handful of values),
-     with decode_raw() computed once per (lambda, seed, word) inside
-     that loop; the existing alpha/beta/gamma/delta grid + alpha_min
-     floor sweep then runs, unchanged, against each lambda's cached
-     decodes. Whichever lambda's best floor/weights combo gets the best
-     pooled VAL accuracy is selected.
-  2. `delta` (on ScoreWeights) -- FINAL re-ranking weight on the n-gram
-     LM's full-word score. This IS cheap (score_raw_candidates() already
-     computes it from RawCandidate.lm_score, which decode_raw() fills in
-     once per word regardless of delta), so it's simply folded into the
-     existing weight grid as a 4th free dimension
-     (alpha + beta + gamma + delta = 1) alongside alpha/beta/gamma,
-     using the same step and the same alpha_min floor semantics as
-     before.
-If no ngram_model.json is found, this script behaves EXACTLY as before
-(delta stays fixed at 0.0, no lambda sweep, single decode pass) -- the
-LM is opt-in, not required.
-
-The multiprocessing worker pool now also carries the n-gram model
-through to each worker process via the pool initializer/initargs
-(NgramLanguageModel is a plain dataclass of dicts/lists/strings, so it
-pickles the same way ScoreWeights etc. already do) -- workers build
-their own WordDecoder(ngram_model=...) once per process, exactly like
-they already do for beam_width/top_k/etc.
+Grid-search decoder ScoreWeights and tau_word on synthetic concatenated words.
 
 Usage:
     python -m experiments.tune_decoder_weights --n-words 800
     python -m experiments.tune_decoder_weights --n-words 800 --workers 4
-    python -m experiments.tune_decoder_weights --n-words 800 --alpha-min-candidates 0.5
-    # with an n-gram LM (auto-detected from experiments/ngram_model.json):
-    python -m experiments.tune_decoder_weights --n-words 800 --workers 4
-    python -m experiments.tune_decoder_weights --n-words 800 --search-lambda-lm-candidates 0,0.1,0.2,0.3
-    python -m experiments.tune_decoder_weights --n-words 800 --no-ngram   # force old behavior
 """
 from __future__ import annotations
 

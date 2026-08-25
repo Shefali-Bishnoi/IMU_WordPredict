@@ -1,86 +1,8 @@
 """
-experiments/evaluate_decoder.py
-
-Full decoder evaluation suite, built around ONE core ablation plus a set
-of secondary experiments that all explain the n-gram LM's contribution
-in more detail than a single accuracy number would (ActionPlan.md
-Priority 4 / FuturePlan.md Sec.6.3).
-
-    SYNTHETIC CONCATENATED-CHARACTER WORD EVALUATION -- NOT REAL
-    CONTINUOUS HANDWRITING (ActionPlan.md Sec.4.3). Word accuracy here
-    measures the decoder pipeline on isolated-character samples stitched
-    together, not on real continuous air-writing.
-
-TEST is used exactly once per configuration, for final reporting only.
-Nothing here is tuned against TEST -- alpha/beta/gamma/delta/tau_word/
-search_lambda_lm were already tuned on VAL by
-experiments/tune_decoder_weights.py and are just loaded/applied here.
-
---------------------------------------------------------------------
-1. MAIN ABLATION (A-E), same fixed synthetic TEST words for every
-   configuration, plus Top-1/Top-3/Top-5 for the beam-based configs:
-
-    A. Greedy, no dictionary
-    B. Beam search only
-    C. Dictionary correction only (greedy)
-    D. Beam search + dictionary correction        (LM OFF: delta=0,
-       search_lambda_lm=0 -- this is the pre-n-gram system, evaluated
-       under the SAME alpha/beta/gamma as E so "E - D" isolates the
-       LM's contribution, not a re-tuned no-LM optimum)
-    E. Beam search + dictionary + character n-gram (LM ON: tuned
-       delta + search_lambda_lm from experiments/decoder_weights.json)
-
-   THIS IS THE BUG THIS REVISION FIXES: the previous version of this
-   script only read alpha/beta/gamma out of decoder_weights.json and
-   never constructed a WordDecoder with ngram_model= or
-   search_lambda_lm= at all -- so Config D silently WAS the entire
-   evaluation, even after tune_decoder_weights.py had found and saved
-   a real ~6pp validation-side improvement from the n-gram LM. That
-   improvement was never actually exercised by this script's decode
-   calls. Config E below is what was missing.
-
-2. N-gram ORDER comparison  (--order-sweep)
-3. N-gram WEIGHT (search_lambda_lm) sweep  (--lambda-sweep)
-4. Top-1/Top-3/Top-5 (folded into section 1's table)
-5. Error-category breakdown for config E, including a new
-   "n-gram language-model regression" category for words D got right
-   and E got wrong
-6. D-vs-E effect matrix: fixed / regressed / unchanged-correct /
-   unchanged-wrong
-7. Accuracy broken down by edit-distance bucket (0 / 1 / 2 / >2, raw
-   beam-search candidate vs. true word)
-8. Beam-width sweep, evaluated WITH the n-gram LM attached
-   (--beam-width-sweep)
-9. Latency: no-LM vs. with-LM decode_raw() timing
-10. Confidence/coverage table at several tau_word cutoffs, using
-    config E's margin -> sigmoid(6*margin) confidence, the exact
-    transform app/correction.py applies at inference time
-
-Reused, not duplicated:
-    - experiments.tune_decoder_weights.build_synthetic_words
-    - experiments.tune_decoder_weights.precompute_raw_candidates
-      (already supports ngram_model / search_lambda_lm -- this script
-      previously duplicated a worse, LM-blind version of this function
-      as decode_all_configs(); that duplicate is gone)
-    - experiments.tune_decoder_weights.wilson_ci
-    - experiments.tune_decoder_weights._margin_to_confidence
-      / CONFIDENCE_SIGMOID_STEEPNESS (same confidence transform
-      app/correction.py applies at inference time)
-    - experiments.tune_decoder_weights.OUT_PATH
-    - inference.word_decoder.WordDecoder / RawCandidate / ScoreWeights
-    - language.edit_distance.levenshtein
-    - language.ngram.NgramLanguageModel
+Decoder evaluation suite on synthetic concatenated-character words.
 
 Usage:
-    # full suite, defaults chosen to finish in a reasonable time
     python -m experiments.evaluate_decoder --n-words 800 --workers 4
-
-    # fast, main-ablation-only run (old A-D behavior, LM completely off)
-    python -m experiments.evaluate_decoder --n-words 800 --workers 4 --no-ngram
-
-    # skip the expensive re-decode sweeps but keep the A-E ablation
-    python -m experiments.evaluate_decoder --n-words 800 --workers 4 \\
-        --no-order-sweep --no-lambda-sweep --no-beam-width-sweep
 """
 from __future__ import annotations
 
@@ -97,9 +19,7 @@ from inference.word_decoder import RawCandidate, ScoreWeights, WordDecoder
 from language import edit_distance
 from language.ngram import NgramLanguageModel
 
-# Reuse the tuning script's word-building / decode / stats helpers and
-# the exact paths it wrote decoder_weights.json / read val.npz from --
-# no duplicated logic, no duplicated path constants.
+# Reuse tuning script helpers and paths.
 from experiments.tune_decoder_weights import (
     CONFIDENCE_SIGMOID_STEEPNESS,
     OUT_PATH as TUNED_WEIGHTS_PATH,

@@ -1,31 +1,10 @@
 """
-The canonical evaluation script (ActionPlan.md Priority 0, "one single,
-canonical baseline evaluation script that anyone can rerun").
-
-Priority 1 change (ActionPlan.md section 9.2 / 9.3): this script now
-evaluates WHICHEVER architecture you name with --arch, and additionally
-records model size and parameter count -- both are explicit tie-breakers
-in ActionPlan.md's selection rule (9.3: F1 first, then robustness, then
-latency, then model size, then implementation complexity), so they need
-to be in the same metrics.json as F1/latency, not gathered separately.
+Evaluate a trained sensor architecture on the test split.
 
 Usage:
     python evaluate.py --arch cnn_lstm
     python evaluate.py --arch cnn_bilstm
     python evaluate.py --arch tcn
-
-Produces (per architecture):
-    experiments/<arch>_metrics.json            (or baseline_metrics.json for cnn_lstm)
-    experiments/<arch>_confusion_matrix.csv     (or baseline_confusion_matrix.csv for cnn_lstm)
-
---arch cnn_lstm writes to the exact same paths as Priority 0
-(config.METRICS_PATH / config.CONFUSION_MATRIX_PATH), so nothing about
-re-running the baseline evaluation changes.
-
-Priority 0 audit fix (unchanged, still applies to every architecture):
-metrics and the confusion matrix are always computed against the fixed
-label space np.arange(NUM_CLASSES) (52 classes), not against whatever
-subset of classes happened to appear in y_test/y_pred this run.
 """
 from __future__ import annotations
 
@@ -108,10 +87,7 @@ def main(arch: str) -> None:
         absent_chars = [index_to_label(int(idx)) for idx, s in zip(labels, support) if s == 0]
         print(f"[warn] {n_absent_from_test} classes have zero test support: {absent_chars}")
 
-    # Robustness check called out explicitly by ActionPlan.md 9.3 rule #2
-    # ("not just the average -- check the confusion matrix for the weak
-    # classes"): surface the worst few classes right in the metrics file
-    # instead of requiring a human to re-derive it from per_class each time.
+    # Track worst classes by F1 for robustness analysis.
     worst_classes = sorted(per_class.items(), key=lambda kv: kv[1]["f1"])[:5]
 
     metrics = {

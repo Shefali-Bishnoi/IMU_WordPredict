@@ -1,76 +1,16 @@
-"""
-Minimal production-ready serving layer.
+"""FastAPI serving layer for IMU character and word prediction.
 
     uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-POST /predict
-    Stateless single-character prediction -- unchanged, PLUS an additive
-    "architecture" field (see PredictResponse) so a frontend can display
-    the real serving architecture without hardcoding it.
-
-Word-boundary (commit-button) endpoints -- see app/session.py and
-app/correction.py for the design rationale. UNCHANGED contract, with
-ADDITIVE optional score-breakdown fields on CommitWordResponse (see
-below) -- existing clients that only read raw_word/corrected_word/
-confidence/is_low_confidence/text_so_far are unaffected.
-
-POST /session/start
-POST /session/{session_id}/stroke      <- this IS "Predict Character":
-    everything accumulated in the session's current-word buffer since
-    the last /stroke or /commit call is treated as ONE character
-    instance and predicted. No new endpoint was needed for the
-    Predict-Character UX -- this one already matches it exactly.
-POST /session/{session_id}/commit      <- this IS "Predict Word": runs
-    beam search + dictionary/LM correction over the characters
-    predicted so far, finalizes the word, appends it to the session's
-    text buffer, AND (NEW, additive) runs Level-3 contextual reranking
-    over the top word candidates using the preceding committed text as
-    context. There is still NO "commit sentence" action -- the text
-    buffer simply grows by one word per call, exactly as before.
-POST /session/{session_id}/end
-
-PERSONALIZATION ADDITIONS (UNCHANGED from before this feature; still
-character-model personalization, still completely separate from the
-new language layer -- see app/session.py's module docstring):
-
-POST /session/{session_id}/correct-character
-POST /session/{session_id}/personalized-predict
-
-GET /model/info  (additive)
-    Returns real, non-hardcoded metadata about the currently serving
-    pipeline, now including whether the Level-3 language layer is
-    available/enabled.
-
-NEW (length-band enforcement, see inference/realtime.py's
-StrokeLengthError docstring / check.md): /predict, /session/{id}/stroke,
-and /session/{id}/correct-character now catch StrokeLengthError and
-return HTTP 400 with a clear, actionable message instead of either
-crashing with a 500 or (the previous, worse behavior) silently returning
-a confident-looking but meaningless prediction for an out-of-distribution
-stroke length. This matters specifically now that real hardware strokes
-(via hardware/marker_bridge.py) are a live input source, not just
-pre-filtered dataset files.
-
-NEW (Level-3 contextual correction / language layer -- ActionPlan-style
-"three distinct learning levels", extended):
-    Level 1: IMU -> character              (TCN, unchanged)
-    Level 2: user IMU -> personalized char  (SessionAdapter, unchanged)
-    Level 3: words -> contextual score      (NEW: language/*, this file)
-The language model is a PRETRAINED, CAUSAL (left-to-right) HuggingFace
-model, loaded ONCE at startup (mirrors CharacterRecognizer's own
-load-once pattern). It NEVER trains on the IMU dataset, NEVER touches
-TCN/adapter weights, and NEVER replaces the character/dictionary
-pipeline -- it only reranks the top-K word candidates that pipeline
-already produced, using config.LANGUAGE_MODEL_WEIGHT as a conservative
-combination weight (see language/contextual_scorer.py). Toggle entirely
-via config.LANGUAGE_MODEL_ENABLED (env var LANGUAGE_MODEL_ENABLED); if
-the model fails to load, `language_model_available=false` and every
-existing code path continues to work exactly as it did before this
-feature existed -- see _load_language_model() below.
-
-The model is loaded exactly once at process startup (not per-request).
-CORS is left open here for local development; lock this down to your real
-frontend origin before shipping.
+Endpoints:
+    POST /predict                         - single-character prediction
+    POST /session/start
+    POST /session/{id}/stroke             - predict one character
+    POST /session/{id}/commit               - decode word + optional LM rerank
+    POST /session/{id}/end
+    POST /session/{id}/correct-character  - personalization correction
+    POST /session/{id}/personalized-predict
+    GET  /model/info
 """
 from __future__ import annotations
 
@@ -100,10 +40,6 @@ app.add_middleware(
 )
 
 _recognizer: Optional[CharacterRecognizer] = None
-
-# NEW: Level-3 language layer. None until (and unless) startup loads it
-# successfully -- every call site below treats None exactly like
-# "disabled" (see language/contextual_scorer.rerank_candidates).
 _language_model = None
 
 
@@ -115,13 +51,7 @@ def _load_model() -> None:
 
 
 def _load_language_model() -> None:
-    """Loads the Level-3 causal LM once, at startup, exactly like the
-    character recognizer above. Never raises -- a failed/disabled load
-    just leaves _language_model as None, and every downstream caller
-    already degrades gracefully (contextual reranking is skipped, the
-    existing word-decoder result is used as-is, per
-    Definition of Done: 'language model failure gracefully falls back
-    to the existing pipeline')."""
+    """Load causal LM at startup; leave _language_model None on failure."""
     global _language_model
     if not config.LANGUAGE_MODEL_ENABLED:
         print("[language] LANGUAGE_MODEL_ENABLED=false -- contextual correction disabled")
@@ -151,9 +81,6 @@ def _require_session(session_id: str):
     return session
 
 
-# ---------------------------------------------------------------------------
-# Stateless single-character prediction (unchanged, + additive field)
-# ---------------------------------------------------------------------------
 class StrokeRequest(BaseModel):
     sensor: List[List[float]] = Field(
         ..., description="Rows of [ax, ay, az, gx, gy, gz, mx, my, mz]"
@@ -169,9 +96,6 @@ class TopKEntry(BaseModel):
 class PredictResponse(BaseModel):
     probabilities: List[float]
     top_k: List[TopKEntry]
-    # ADDITIVE: CharacterRecognizer.predict() already computes this
-    # internally (see inference/realtime.py); it just wasn't surfaced
-    # over HTTP before. Optional + defaulted so old clients are unaffected.
     architecture: Optional[str] = None
 
 
@@ -196,9 +120,6 @@ def predict(req: StrokeRequest) -> PredictResponse:
     return PredictResponse(**result)
 
 
-# ---------------------------------------------------------------------------
-# Session / word-boundary (commit-button) endpoints (unchanged contract)
-# ---------------------------------------------------------------------------
 class StartSessionRequest(BaseModel):
     user_id: Optional[str] = None
 
@@ -222,14 +143,7 @@ class StrokeInSessionResponse(BaseModel):
 
 @app.post("/session/{session_id}/stroke", response_model=StrokeInSessionResponse)
 def submit_stroke(session_id: str, req: StrokeRequest) -> StrokeInSessionResponse:
-    """This IS "Predict Character": everything in req.sensor is treated
-    as one already-segmented character instance (matching exactly how
-    every training file was collected -- one file, one character). The
-    caller (Node backend / bridge-fed frontend) is responsible for
-    deciding when a character is "done" and calling this -- there is
-    still no automatic character-boundary detection anywhere in this
-    system (FuturePlan.md Sec.0.1). UNCHANGED by the language-layer
-    feature -- character-level prediction never touches the LM."""
+    """Predict one character and append it to the current word buffer."""
     recognizer = _require_recognizer()
     session = _require_session(session_id)
     if not req.sensor or any(len(row) != 9 for row in req.sensor):
@@ -266,22 +180,10 @@ class CommitWordResponse(BaseModel):
     confidence: float
     is_low_confidence: bool
     text_so_far: str
-    # ADDITIVE (from app/correction.py's CorrectionResult, which in turn
-    # comes straight from inference/word_decoder.py's already-computed
-    # Candidate fields -- nothing new is computed, just surfaced).
     beam_score: Optional[float] = None
     edit_similarity: Optional[float] = None
     word_frequency: Optional[float] = None
     lm_score: Optional[float] = None
-
-    # --- NEW ADDITIVE: Level-3 contextual correction -----------------
-    # `word` (the field above named `corrected_word`) is still exactly
-    # what the EXISTING sensor/beam/dictionary/personalization pipeline
-    # decided -- this block describes what, if anything, the contextual
-    # language layer changed ON TOP of that, purely for transparency.
-    # `final_word` is what actually got appended to text_so_far/
-    # text_buffer: it equals `corrected_word` whenever the language
-    # layer is disabled/unavailable/agrees with the existing pick.
     final_word: str = ""
     language_model_used: bool = False
     reranked: bool = False
@@ -291,29 +193,15 @@ class CommitWordResponse(BaseModel):
 
 @app.post("/session/{session_id}/commit", response_model=CommitWordResponse)
 def commit_word(session_id: str) -> CommitWordResponse:
-    """This IS "Predict Word": beam search + dictionary/LM correction
-    over every character predicted since the last commit, followed
-    (additively) by Level-3 contextual reranking against the session's
-    preceding committed text. There is still NO "commit sentence"
-    action -- exactly one word is appended to the text buffer per call,
-    same as before this feature existed."""
+    """Decode the current word and optionally rerank with the causal LM."""
     session = _require_session(session_id)
     if session.current_word.is_empty():
         raise HTTPException(status_code=400, detail="No characters written since the last commit")
 
-    # --- Existing pipeline: sensor + beam + dictionary + n-gram --------
-    # (UNCHANGED behavior/weights/tuning -- this call is byte-for-byte
-    # the same as before the language layer was added.)
     result = correct_word(
         session.current_word.characters, session.current_word.probabilities
     )
 
-    # --- NEW: Level-3 contextual reranking (additive, on top) -----------
-    # Uses the word-decoder's own top-K candidates (already computed by
-    # correct_word() above -- no re-decoding) and the words already
-    # committed THIS session as left-to-right context. Falls back to
-    # result.corrected_word untouched if the LM is unavailable/disabled
-    # or scoring fails for any reason -- see rerank_candidates().
     context_words = session.committed_words
     rerank = rerank_candidates(
         context_words=context_words,
@@ -323,7 +211,7 @@ def commit_word(session_id: str) -> CommitWordResponse:
     final_word = rerank["selected_word"] or result.corrected_word
 
     session.committed_words.append(final_word)
-    session.current_word = type(session.current_word)()  # fresh WordBuffer
+    session.current_word = type(session.current_word)()
     session.record_contextual_correction({
         "raw_word": result.raw_word,
         "decoder_word": result.corrected_word,
@@ -371,11 +259,6 @@ def end_session(session_id: str) -> EndSessionResponse:
     return EndSessionResponse(text=text)
 
 
-# ---------------------------------------------------------------------------
-# Personalization endpoints (UNCHANGED, + StrokeLengthError -> 400).
-# Character-model personalization only -- never touched by the language
-# layer. See app/session.py's module docstring for the boundary.
-# ---------------------------------------------------------------------------
 class CorrectCharacterRequest(BaseModel):
     sensor: List[List[float]] = Field(
         ..., description="Same raw stroke shape as /stroke -- the stroke being corrected"
@@ -463,12 +346,6 @@ def personalized_predict(session_id: str, req: StrokeRequest) -> PersonalizedPre
     )
 
 
-# ---------------------------------------------------------------------------
-# Model / pipeline metadata (additive) -- what actually exists, nothing
-# invented. Backs the Node backend's /api/model/info and
-# /api/pipeline/status so the frontend never hardcodes "TCN" or guesses
-# whether beam search/dictionary/LM/personalization are wired in.
-# ---------------------------------------------------------------------------
 @app.get("/model/info")
 def model_info() -> dict:
     recognizer = _require_recognizer()
@@ -489,12 +366,8 @@ def model_info() -> dict:
             "gamma": _weights.gamma,
             "delta": _weights.delta,
         },
-        # ADDITIVE: lets a frontend show the valid stroke-length band
-        # (e.g. next to the sample counter: "47 / 40-80 rows") instead
-        # of hardcoding it or discovering it only via a 400 error.
         "min_raw_lines": MIN_RAW_LINES,
         "max_raw_lines": MAX_RAW_LINES,
-        # NEW ADDITIVE: Level-3 contextual-correction layer status.
         "language_model_available": _language_model is not None,
         "language_model_enabled_config": config.LANGUAGE_MODEL_ENABLED,
         "language_model_name": config.LANGUAGE_MODEL_NAME if _language_model is not None else None,

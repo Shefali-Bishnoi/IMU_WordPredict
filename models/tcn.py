@@ -1,36 +1,4 @@
-"""
-Temporal Convolutional Network (TCN) sensor model (ActionPlan.md Priority
-1, section 9.1 Option C).
-
-Implemented directly with dilated causal Conv1D residual blocks rather
-than pulling in an external TCN package -- this keeps requirements.txt
-unchanged for what is, for now, just one ablation option among three (see
-ActionPlan.md's "golden rule": don't add a dependency/component before an
-experiment justifies it).
-
-Structure:
-
-    IMU -> ResidualBlock(dilation=1) -> ResidualBlock(dilation=2)
-        -> ResidualBlock(dilation=4) -> ResidualBlock(dilation=8)
-        -> GlobalAveragePooling1D -> features
-
-Each residual block:
-    Conv1D(filters, kernel_size, dilation_rate=d, causal) -> LeakyReLU -> Dropout
-    Conv1D(filters, kernel_size, dilation_rate=d, causal) -> LeakyReLU -> Dropout
-    + residual connection (1x1 Conv1D to match channels on the first block)
-
-Causal padding + growing dilation is the standard TCN recipe from the
-literature this ablation is drawn from (ActionPlan.md 9.1: "TCNs model
-long temporal dependencies without recurrence, and are typically easier
-to parallelize/faster at inference"). Causal masking isn't strictly
-required for correctness here (each instance is a whole, already-segmented
-window, same as the BiLSTM case) but keeping it standard makes this a fair,
-literature-comparable ablation entry rather than a bespoke variant.
-
-Mirrors cnn_lstm.py's public interface (build_encoder, build_classifier,
-build_full_model) so train.py / evaluate.py select architectures by name
-only -- see models/__init__.py's ARCH_BUILDERS registry.
-"""
+"""Temporal Convolutional Network (TCN) sensor model."""
 from __future__ import annotations
 
 from tensorflow import keras
@@ -54,9 +22,6 @@ def _residual_block(x, filters: int, kernel_size: int, dilation_rate: int, dropo
     h = layers.LeakyReLU()(h)
     h = layers.Dropout(dropout)(h)
 
-    # 1x1 conv to match channel counts so the residual add is valid the
-    # first time channels change (input has NUM_SENSOR_CHANNELS=9,
-    # blocks have `filters`); a no-op-shape passthrough after that.
     if prev.shape[-1] != filters:
         prev = layers.Conv1D(filters, 1, padding="same", name=f"tcn_block{block_idx}_proj")(prev)
     return layers.Add(name=f"tcn_block{block_idx}_residual")([prev, h])
@@ -98,10 +63,7 @@ def build_full_model(
     num_classes: int = NUM_CLASSES,
     dropout: float = 0.3,
 ) -> tuple[keras.Model, keras.Model, keras.Model]:
-    """Returns (full_model, encoder, classifier) -- same contract as
-    cnn_lstm.build_full_model. Feature dim here equals `filters` (64 by
-    default, from GlobalAveragePooling1D), read off encoder.output_shape
-    rather than hardcoded."""
+    """Returns (full_model, encoder, classifier)."""
     encoder = build_encoder(seq_len, n_channels, dropout)
     classifier = build_classifier(encoder.output_shape[-1], num_classes)
 

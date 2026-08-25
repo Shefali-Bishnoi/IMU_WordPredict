@@ -1,10 +1,4 @@
-"""
-Session-scoped adaptation buffer -- Level-1 (explicit user correction)
-labels only, per ActionPlan.md 13.6's "safest first" build order. Holds
-already-preprocessed model inputs (same preprocess() as everywhere else
--- preprocessing.segment.preprocess), since the adapter needs real
-model-shaped inputs to train on.
-"""
+"""Session-scoped adaptation buffer for user correction samples."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

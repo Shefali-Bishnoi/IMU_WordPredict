@@ -1,27 +1,4 @@
-"""
-Baseline CNN-LSTM sensor model (ActionPlan.md Priority 1, Option A --
-"keep as the mandatory baseline, always in the comparison table").
-Architecture unchanged from Priority 0 -- this file is copied here
-byte-for-byte from the version you already trained/evaluated, so any
-model you've already saved under the legacy paths (config.model_path
-("cnn_lstm") resolves to the same file as before: BASELINE_MODEL_PATH)
-keeps working with zero retraining required.
-
-    Input(seq_len, 9)
-    Conv1D 64  (LeakyReLU) -> MaxPool
-    Conv1D 128 (LeakyReLU) -> MaxPool
-    Conv1D 256 (LeakyReLU) -> MaxPool
-    LSTM 32
-    Dropout
-    -- feature vector (32-dim) --
-    Dense 256 -> Dense 128 -> Dense NUM_CLASSES -> Softmax
-
-The encoder and classifier are built and returned as SEPARATE Keras models
-(ActionPlan.md Step 5 / Step 25): this is a hard requirement for Priority 5
-(the personalization adapter gets inserted between them later as
-`h' = h + Adapter(h)` without any change to this file). A combined
-end-to-end model is also returned for convenience during training.
-"""
+"""Baseline CNN-LSTM sensor model."""
 from __future__ import annotations
 
 from tensorflow import keras
@@ -68,10 +45,7 @@ def build_full_model(
     num_classes: int = NUM_CLASSES,
     dropout: float = 0.3,
 ) -> tuple[keras.Model, keras.Model, keras.Model]:
-    """Returns (full_model, encoder, classifier). full_model is what you
-    train end-to-end; encoder/classifier share its weights and are what
-    get saved/loaded separately for Priority 5 and for real-time
-    inference's probability-preserving output contract (Priority 2)."""
+    """Returns (full_model, encoder, classifier)."""
     encoder = build_encoder(seq_len, n_channels, dropout)
     classifier = build_classifier(encoder.output_shape[-1], num_classes)
 

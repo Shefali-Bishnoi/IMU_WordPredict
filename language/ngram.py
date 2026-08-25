@@ -1,33 +1,4 @@
-"""
-Character-level n-gram language model (ActionPlan.md Priority 4, section
-12.2 -- "Character n-gram baseline", the recommended first step before a
-word-level n-gram or Transformer LM).
-
-Trained on EXTERNAL English text (word list from `wordfreq`, already a
-project dependency), never on the IMU dataset -- the IMU data has no
-sentence/word-level signal to train a language model from (ActionPlan.md
-Sec.4.3 / 12.2).
-
-Unlike the existing dictionary/wordfreq lookup (language/wordfreq_scorer.py),
-which only tells you whether a *complete* string is a known word, this
-model scores PARTIAL character sequences -- P(next_char | previous N-1
-chars) -- so it can be queried DURING beam expansion, not just after a
-full candidate string exists. That is the property that lets an LM term
-actually influence which hypotheses survive pruning (see
-inference/beam_search.py's `lm_scorer` argument), instead of only
-re-ranking a beam that was already built from sensor score alone
-(FuturePlan.md Sec.6.3).
-
-Smoothing: "stupid backoff" (Brants et al. 2007). Try the highest-order
-context seen; if the (order, context, char) triple was never observed,
-back off to the next-lower-order context and multiply by a fixed
-discount (ALPHA_BACKOFF). This is a simple, cheap, standard first choice
-for a character LM -- it does not produce a normalized probability
-distribution, which is fine here since only the resulting score's effect
-on RANKING matters, exactly like the existing beam-search log-probabilities
-are inputs to a weighted sum, not asserted to be true probabilities on
-their own.
-"""
+"""Character-level n-gram language model trained on external English text."""
 from __future__ import annotations
 
 import json
@@ -42,12 +13,9 @@ from wordfreq import top_n_list, zipf_frequency
 START = "^"  # start-of-word boundary symbol
 END = "$"    # end-of-word boundary symbol
 
-DEFAULT_ORDER = 4                    # predict each char from the previous 3
-ALPHA_BACKOFF = 0.4                  # stupid-backoff discount (standard default)
-DEFAULT_MODEL_VOCAB_SIZE = 100_000   # training words; can exceed the decoder's
-                                     # 50k lookup vocab since this model only
-                                     # needs to have SEEN character patterns,
-                                     # not every whole word
+DEFAULT_ORDER = 4
+ALPHA_BACKOFF = 0.4
+DEFAULT_MODEL_VOCAB_SIZE = 100_000
 
 
 @dataclass
@@ -67,16 +35,7 @@ class NgramLanguageModel:
         vocab_size: int = DEFAULT_MODEL_VOCAB_SIZE,
         weight_by_frequency: bool = True,
     ) -> "NgramLanguageModel":
-        """Train from wordfreq's English word list -- external text, per
-        ActionPlan.md 12.2, completely decoupled from the IMU dataset.
-
-        weight_by_frequency=True repeats each word's n-gram contribution
-        proportional to its wordfreq zipf frequency (rounded to an
-        integer repeat count), so the model learns "the"/"and"-style
-        patterns more strongly than obscure words -- the same intuition
-        as the existing dictionary's frequency_score, folded into
-        training instead of only into final re-ranking.
-        """
+        """Train from wordfreq's English word list."""
         words = [w for w in top_n_list("en", vocab_size) if w.isalpha()]
         counts: dict = defaultdict(Counter)
         totals: dict = defaultdict(int)
@@ -148,12 +107,7 @@ class NgramLanguageModel:
             discount *= ALPHA_BACKOFF
 
     def next_char_logprob(self, prefix_chars: list, next_char: str) -> float:
-        """log P(next_char | prefix_chars), START-padded to match how the
-        model was trained (a word's first character is conditioned on
-        START symbols, not on an empty/unpadded context). This is the
-        exact function passed as `lm_scorer` into
-        inference/beam_search.py -- it is called once per (hypothesis,
-        candidate-char) pair during expansion, so it must stay cheap."""
+        """log P(next_char | prefix_chars); used as beam_search lm_scorer."""
         padded_prefix = [START] * (self.order - 1) + [c.lower() for c in prefix_chars]
         context = "".join(padded_prefix[-(self.order - 1):])
         return self.char_logprob(context, next_char.lower())
@@ -172,9 +126,7 @@ class NgramLanguageModel:
         return total
 
     def score_word(self, word: str) -> float:
-        """Full-sequence log-prob INCLUDING the END boundary symbol --
-        use for a COMPLETE candidate word (e.g. WordDecoder's final
-        re-ranking term), not a still-growing hypothesis."""
+        """Full-sequence log-prob including END boundary."""
         return self.score_partial(list(word) + [END])
 
 
@@ -184,7 +136,5 @@ def _cached_model(path_str: str) -> NgramLanguageModel:
 
 
 def load_default(path: Path) -> NgramLanguageModel:
-    """Cached loader -- parsed from disk at most once per process,
-    matching the lazy-build-once pattern language/edit_distance.py
-    already uses for its BK-tree."""
+    """Cached loader; parsed from disk at most once per process."""
     return _cached_model(str(path))
