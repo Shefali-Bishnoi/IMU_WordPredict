@@ -13,9 +13,7 @@ from inference.word_decoder import ScoreWeights, WordDecoder
 
 def make_probs(char: str, confidence: float, runner_up: str | None = None,
                 runner_up_p: float = 0.0) -> list[float]:
-    """One 52-class probability row: mostly `char`, optional runner-up
-    carrying probability mass -- lets us build controlled test
-    sequences without touching the real model."""
+    """Build a controlled 52-class probability row."""
     probs = [0.0] * NUM_CLASSES
     probs[label_to_index(char)] = confidence
     if runner_up:
@@ -37,9 +35,7 @@ def header(title: str) -> None:
 
 def test_greedy_vs_beam_disagreement():
     header("TEST: beam search finds a better word than greedy")
-    # Target: "hello". Position 3 ('l') is deliberately ambiguous
-    # (model slightly prefers 'i') so greedy alone gives "heilo" --
-    # not a word -- while a wider beam recovers "hello".
+    # Make the third character ambiguous so beam search can recover "hello".
     sequence = [
         make_probs("h", 0.9),
         make_probs("e", 0.9),

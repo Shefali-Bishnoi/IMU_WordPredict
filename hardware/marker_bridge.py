@@ -1,97 +1,11 @@
-"""
-hardware/marker_bridge.py
+"""Forward live IMU serial data to the browser over a local WebSocket.
 
-Pure hardware-to-browser adapter for the physical IMU marker. This script
-does ONE job: read the marker's live serial stream, parse it into
-9-value sensor rows using the SAME column layout the rest of this
-project already uses (see config.py / preprocessing/io.py), and
-broadcast those rows over a small local WebSocket server that the
-frontend connects to directly.
+The bridge accepts the project's 12-column raw format, including the
+optional label column, and reuses the shared row normalizer. Streaming
+invalid values use causal forward-fill because future rows are unavailable.
 
-WHY A SEPARATE LOCAL WEBSOCKET SERVER, NOT A DIRECT LINE INTO THE
-NODE BACKEND'S SESSION STATE:
-
-The Node backend's WordPredict session model (backend/session/
-sessionManager.js, backend/websocket/wsServer.js) ties a session to the
-specific browser WebSocket connection that created it -- there is no
-existing mechanism for a second process (this bridge) to inject rows
-into someone else's browser session. Rather than redesigning that
-session/connection model (which every other client of the Node backend
-already depends on), this bridge instead broadcasts rows on its OWN
-tiny local WebSocket server. The frontend's MarkerWebSocketSource (see
-frontend/app.js) connects to BOTH: the existing Node backend (for
-session/predict/commit, unchanged) AND this bridge (purely to receive
-raw sensor rows). When a row arrives from the bridge, the frontend
-forwards it into the EXISTING 'sensor' WebSocket message the Node
-backend already understands -- exactly the same call a Demo-source or
-Training-Sample-source row makes. This is what keeps "one prediction
-path, three interchangeable sources" true without touching the Node/
-Python session contract at all.
-
-    Marker  --serial-->  THIS BRIDGE  --local WS-->  Browser
-                                                          |
-                                                          | existing
-                                                          | 'sensor' /
-                                                          | 'predict_character'
-                                                          | messages,
-                                                          | UNCHANGED
-                                                          v
-                                                    Node backend
-                                                          |
-                                                          v
-                                                  Python /stroke, /commit
-                                                  (beam search, dictionary,
-                                                   TCN model -- unchanged)
-
-NO ML INFERENCE HAPPENS HERE. This script never imports tensorflow,
-never calls the model, never talks to app/main.py directly.
-
-RAW SCHEMA (reused, not re-derived): config.py already defines the exact
-12-column, no-header raw schema this dataset/device uses:
-    0: character label (not present/meaningful on a live device stream --
-       see NOTE below)
-    1: timestamp
-    2-4: Accel X, Y, Z
-    5-7: Gyro X, Y, Z
-    8-10: Mag X, Y, Z
-    11: writing flag (1 = actively writing, 0 = not)
-This bridge reuses preprocessing/io.py's row-normalization helper
-(_normalize_row) for the same 12/13-column quirks that module already
-handles, instead of writing a second parser.
-
-NOTE on live device format: the ORIGINAL recorded .txt files always
-carry a real character label in column 0, because that's how the
-dataset was collected (one file per known character). A LIVE marker
-mid-stream has no way to know what character is being written -- that's
-the whole point of this system. If your firmware's live serial output
-omits column 0 (or sends a placeholder), set --label-col-present=false
-and this script will insert a placeholder so the shared row-normalizer
-still sees the expected column count. Check your actual firmware output
-before assuming either way -- this is deliberately a CLI flag, not a
-guess baked into the parser.
-
-'ovf' / 'nan' HANDLING (documented limitation, read before relying on
-this in production): the project's real cleaning logic
-(preprocessing/clean.py's clean_sensor_matrix) does forward-fill THEN
-back-fill across an entire already-complete stroke -- it can look both
-backward and forward in time because by the time it runs, the whole
-stroke already exists. This bridge is a streaming adapter -- it only
-ever sees one row at a time and can't "look forward." So invalid
-readings here are handled with LOCAL, causal forward-fill only (carry
-the last valid value per channel; 0.0 if none has ever been seen yet),
-logged as a warning. This is NOT identical to the server-side cleaning
-and is called out explicitly rather than silently claimed equivalent --
-a normal marker stream should essentially never hit this path (ovf/nan
-are collection artifacts, not something well-functioning hardware emits
-routinely), so this is a safety net, not a data-quality guarantee.
-
-USAGE:
-    pip install pyserial websockets
+Usage:
     python -m hardware.marker_bridge --serial-port COM5 --baud 115200
-    python -m hardware.marker_bridge --serial-port /dev/ttyUSB0 --baud 115200 --ws-port 8765
-
-Then, in the frontend, select "Marker" as the sensor source and it will
-connect to ws://localhost:8765 by default (configurable in the UI).
 """
 from __future__ import annotations
 
@@ -314,8 +228,7 @@ class BridgeServer:
                 self._clients.discard(ws)
 
     def push_from_thread(self, payload: dict) -> None:
-        """Called from the serial-reading background thread -- hands the
-        payload to the asyncio loop thread-safely."""
+        """Called from the serial-reading background thread."""
         if self._loop is not None and self._queue is not None:
             self._loop.call_soon_threadsafe(self._queue.put_nowait, payload)
 
@@ -334,8 +247,7 @@ class BridgeServer:
 
 
 # ---------------------------------------------------------------------------
-# Serial reader thread -- blocking pyserial reads happen off the asyncio
-# loop, forwarding parsed rows into the broadcaster's queue.
+# Serial reader thread
 # ---------------------------------------------------------------------------
 def _serial_reader_thread(
     transport: MarkerTransport,

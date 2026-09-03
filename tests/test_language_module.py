@@ -1,19 +1,7 @@
-"""
-tests/test_language_module.py
+"""Unit tests for contextual language scoring.
 
-Unit tests for the NEW Level-3 language layer (language/causal_lm.py,
-language/contextual_scorer.py). These tests deliberately do NOT download
-a real HuggingFace model -- they use a tiny in-memory FakeLM that
-implements the same `score_next_word(context, candidate_word) -> float`
-interface CausalLanguageModel exposes, so the test suite is fast,
-deterministic, and runnable with no network access or GPU.
-
-Also includes a smoke-level regression check that the EXISTING pipeline
-(dictionary correction via app/correction.py) is untouched by this
-feature -- see test_existing_dictionary_correction_unaffected.
-
-Run:
-    pytest tests/test_language_module.py -v
+The tests use an in-memory language-model double and do not require network
+access, model downloads, or a GPU.
 """
 from __future__ import annotations
 
@@ -29,9 +17,7 @@ from language.contextual_scorer import build_context_string, rerank_candidates
 
 
 class FakeLM:
-    """Deterministic stand-in for CausalLanguageModel. `preferences` maps
-    (context, candidate_word) -> log-prob; anything not listed gets a
-    fixed low score, so tests can assert exactly which candidate wins."""
+    """Deterministic stand-in for CausalLanguageModel."""
 
     def __init__(self, preferences: dict, default: float = -10.0):
         self.preferences = preferences

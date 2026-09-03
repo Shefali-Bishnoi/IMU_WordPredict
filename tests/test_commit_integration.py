@@ -1,29 +1,7 @@
-"""
-tests/test_commit_integration.py
+"""Integration tests for word commit and contextual reranking.
 
-Integration test for the full NEW flow:
-
-    character prediction -> word decoding -> dictionary correction ->
-    Commit Word -> text buffer -> contextual language reranking
-
-...WITHOUT requiring a real trained TCN or a real downloaded HF model
-(neither is guaranteed to be present in a CI/dev environment). Achieves
-this by monkeypatching app.main's module-level `correct_word` and
-`_language_model` -- app/main.py's actual commit_word() logic (session
-bookkeeping, text buffer growth, response shape) runs for real.
-
-This directly covers Definition-of-Done items:
-    - "text buffer appends committed words correctly"
-    - "session reset clears the text buffer"
-    - "there is no sentence-commit dependency" (no such endpoint exists;
-      asserted by inspecting the app's route table)
-    - "existing character prediction still works" is covered separately
-      in test_language_module.py + the existing test suites
-      (test_beam_dictionary.py / smoke_test_personalization.py), which
-      this file does not duplicate.
-
-Run:
-    pytest tests/test_commit_integration.py -v
+Model and language-model dependencies are replaced with test doubles so the
+tests exercise session bookkeeping and response handling locally.
 """
 from __future__ import annotations
 
@@ -44,14 +22,7 @@ from app.session import store as session_store
 
 @pytest.fixture()
 def client(monkeypatch):
-    # IMPORTANT: TestClient(...)'s `with` block triggers FastAPI's real
-    # `startup` event (app.main._load_model), which would otherwise load
-    # the real TCN AND the real HF language model from disk/network --
-    # slow, and it would silently override any monkeypatch of
-    # `_recognizer`/`_language_model` set *before* the `with` block,
-    # since startup runs *during* __enter__, after those assignments.
-    # Stub the loader itself to a no-op so startup does nothing, THEN
-    # set the fakes once we're inside the running app context.
+    # Stub startup before entering TestClient; it loads the real models.
     monkeypatch.setattr(main_module, "_load_model", lambda: None)
 
     with TestClient(main_module.app) as c:

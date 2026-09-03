@@ -31,21 +31,15 @@ from language.ngram import NgramLanguageModel
 OUT_PATH = EXPERIMENTS_DIR / "decoder_weights.json"
 VAL_NPZ_PATH = PROCESSED_DIR / "val.npz"
 
-# Matches the alpha values run_grid_from_raw() actually produces at the
-# default step=0.1 (np.arange(0.05, 0.91, 0.1) rounded to 2dp). Sweeping
-# exactly these means every floor corresponds to a real grid boundary --
-# no floor is silently a no-op because it falls between two grid points.
+# Match the alpha grid produced by run_grid_from_raw().
 DEFAULT_ALPHA_MIN_CANDIDATES = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85]
 
-# Small outer sweep over SEARCH-TIME LM steering (only used when an
-# ngram_model is loaded). Kept short because, unlike the alpha/beta/
-# gamma/delta grid, each value here forces a full re-decode -- see the
-# module docstring.
+# Search-time LM steering values. Each value requires a full re-decode.
 DEFAULT_SEARCH_LAMBDA_LM_CANDIDATES = [0.0, 0.1, 0.2, 0.3]
 
 
 # ---------------------------------------------------------------------------
-# Synthetic word construction (unchanged logic)
+# Synthetic word construction
 # ---------------------------------------------------------------------------
 def build_synthetic_words(y, n_words, seed, min_len=3, max_len=8):
     rng = random.Random(seed)
@@ -72,8 +66,7 @@ def build_synthetic_words(y, n_words, seed, min_len=3, max_len=8):
 
 
 # ---------------------------------------------------------------------------
-# Expensive, weight-independent step: beam search + dictionary correction.
-# Run this ONCE per (seed, word) -- never inside the weight grid loop.
+# Precomputed beam and dictionary candidates.
 # ---------------------------------------------------------------------------
 _worker_decoder: WordDecoder | None = None
 
@@ -83,12 +76,7 @@ def _init_worker(
     ngram_model: NgramLanguageModel | None, search_lambda_sensor: float,
     search_lambda_lm: float,
 ) -> None:
-    """Runs once per worker PROCESS (not per task), so the BK-tree (and,
-    if attached, the n-gram model) get built/attached at most once per
-    worker instead of once per word. `ngram_model` is passed through
-    ProcessPoolExecutor's initargs, which pickles it once per worker --
-    NgramLanguageModel is a plain dataclass of dicts/lists/strings so
-    this is no different from any other picklable initarg here."""
+    """Initialize the per-process decoder used by the worker pool."""
     global _worker_decoder
     _worker_decoder = WordDecoder(
         beam_width=beam_width, top_k=top_k,
@@ -115,23 +103,7 @@ def precompute_raw_candidates(
     search_lambda_sensor: float = 1.0,
     search_lambda_lm: float = 0.0,
 ) -> list[tuple[str, list[RawCandidate]]]:
-    """Returns [(true_word, raw_candidates), ...] -- decode_raw() called
-    exactly once per word. This is the only place beam search / the
-    BK-tree / the n-gram model get exercised in the whole tuning run.
-
-    n_workers=1 runs single-process (simplest, best for small n_words or
-    debugging). n_workers>1 uses a process pool -- NOT a thread pool,
-    since this is pure-Python CPU-bound work and threads would be
-    serialized by the GIL anyway; only separate processes actually run
-    in parallel here.
-
-    ngram_model/search_lambda_lm are passed straight through to every
-    WordDecoder this function builds (single-process or per-worker) --
-    search_lambda_lm=0.0 (the default) reproduces the exact old
-    sensor-only beam search even when ngram_model is attached, so
-    callers that only want the `delta` re-ranking term can pass
-    ngram_model without opting into search-time steering.
-    """
+    """Precompute raw decoder candidates once for each word."""
     tasks = [
         (true_word, [all_probs[i].tolist() for i in row_indices])
         for true_word, row_indices in words

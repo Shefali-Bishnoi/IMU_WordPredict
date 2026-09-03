@@ -256,6 +256,9 @@ python -m experiments.tune_decoder_weights --n-words 2000 --workers 4
 python -m experiments.evaluate_decoder --n-words 2000 --workers 4
 #   -> experiments/decoder_evaluation.json / .txt
 
+# 7. Generate the complete report from the trained pipeline
+python -m experiments.generate_full_report
+
 # Sanity checks, runnable any time:
 python test_beam_dictionary.py
 python smoke_test_personalization.py

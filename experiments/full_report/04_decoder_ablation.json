@@ -1,0 +1,56 @@
+{
+  "n_words_requested": 500,
+  "n_words_built": 500,
+  "results": {
+    "A": {
+      "n_correct": 181,
+      "n_words": 500,
+      "accuracy": 0.362,
+      "ci_95": [
+        0.32107531661676714,
+        0.4050290780977621
+      ],
+      "name": "Greedy, no dictionary"
+    },
+    "B": {
+      "n_correct": 181,
+      "n_words": 500,
+      "accuracy": 0.362,
+      "ci_95": [
+        0.32107531661676714,
+        0.4050290780977621
+      ],
+      "name": "Beam search only"
+    },
+    "C": {
+      "n_correct": 413,
+      "n_words": 500,
+      "accuracy": 0.826,
+      "ci_95": [
+        0.790317702710052,
+        0.856711046007799
+      ],
+      "name": "Dictionary correction only (greedy)"
+    },
+    "D": {
+      "n_correct": 416,
+      "n_words": 500,
+      "accuracy": 0.832,
+      "ci_95": [
+        0.7967249779380424,
+        0.8622122753574376
+      ],
+      "name": "Beam search + dictionary"
+    },
+    "E": {
+      "n_correct": 379,
+      "n_words": 500,
+      "accuracy": 0.758,
+      "ci_95": [
+        0.7185828923419191,
+        0.7934828044961348
+      ],
+      "name": "Beam search + dictionary + n-gram LM"
+    }
+  }
+}

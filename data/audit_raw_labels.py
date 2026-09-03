@@ -1,47 +1,7 @@
-"""
-Standalone audit of every raw file's label column against its directory
-label, across the FULL dataset, in a single fast pass -- so every
-label-related data-quality issue is discovered and categorized at once
-instead of surfacing one warning at a time over a ~50-minute
-data/build_dataset.py run.
+"""Audit raw-file labels against their directory labels.
 
-Usage:
-    python -m data.audit_raw_labels --raw-root "D:\\BTP_Marker_Project\\IMU_WordPredict_BTP\\Dataset"
-
-This does NOT build the processed dataset and does NOT touch sensor
-values at all -- it only reads and classifies label columns, so it should
-run much faster than the full build.
-
-Categories:
-
-  OK_EXACT_MATCH        file label == directory label. No action needed.
-  OK_EMPTY_LABEL        file label column empty. build_dataset.py already
-                         resolves this to the directory label.
-  OK_CASE_MISMATCH      file label differs only by case from the
-                         directory label. build_dataset.py already
-                         resolves this to the directory label.
-  BAD_DIFFERENT_CHAR    file label is a genuinely different character
-                         from the directory label. build_dataset.py
-                         correctly treats this as corrupt and SKIPS it --
-                         we can't tell whether the directory or the
-                         column is right, so we trust neither.
-  BAD_INCONSISTENT_FILE the label column isn't constant across the
-                         file's own rows. Always corrupt, always skipped.
-  BAD_LOAD_ERROR        file couldn't even be parsed (bad column count,
-                         encoding issue, multi-char label, etc.)
-  OUT_OF_LENGTH_BAND    row count outside [MIN_RAW_LINES, MAX_RAW_LINES].
-                         build_dataset.py already skips these regardless
-                         of label correctness -- listed here only so the
-                         full picture (skip vs corrupt vs kept) is visible
-                         in one place.
-
-For BAD_DIFFERENT_CHAR, also reports which (char_dir, participant)
-folders are affected and what fraction of that folder's files are
-affected -- a folder where e.g. 100% of files disagree the same way
-(always 'A' instead of 'C') usually indicates a systematic recording bug
-for that session (e.g. a stale on-device label buffer), not random
-noise. That's worth a manual look, but the default of skipping is safe
-to build with either way.
+The audit reports exact, empty, case-mismatched, inconsistent, malformed,
+and out-of-range files without modifying sensor data or building the dataset.
 """
 from __future__ import annotations
 
